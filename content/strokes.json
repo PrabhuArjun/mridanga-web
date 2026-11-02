@@ -1,0 +1,990 @@
+{
+  "_comment": "Словарь ударов. id — внутренний ключ записи упражнений (латиница, не показывается ученику); label — слог, как его видит ученик. Один и тот же слог в курсе играется по-разному (V02 01:02: слог не закреплён за аппликатурой), поэтому у разных ударов может быть одинаковый label. Звук — синтетическое приближение, не запись. hand — подсказка для ленты: форма кисти, источник с таймкодом и отдельный статус; пальцы указаны только там, где они названы в речи. hand.short — краткая подпись для узкой карточки ленты (тот же приём и порядок движений, без новых сведений); полная — hint.",
+  "version": "0.2.1",
+  "strokes": [
+    {
+      "id": "te",
+      "label": "Те",
+      "aliases": [
+        "Те"
+      ],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Три пальца вместе; звук делается поворотом запястья, плечо неподвижно, локоть зафиксирован.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "00:23",
+          "note": "посадка правой руки"
+        },
+        {
+          "video": "V01",
+          "t": "00:44",
+          "note": "Te — три пальца"
+        },
+        {
+          "video": "V08",
+          "t": "02:50",
+          "note": "«tete как tere: три и один»"
+        }
+      ],
+      "sound": {
+        "pitch": 620,
+        "bend": 0.9,
+        "decay": 0.09,
+        "noise": 0.35,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "count",
+        "count": 3,
+        "hint": "3 пальца вместе",
+        "note": "Какие именно пальцы — в речи не названо. Звук — поворотом запястья.",
+        "status": "confirmed",
+        "source": {
+          "video": "V01",
+          "t": "00:44"
+        }
+      }
+    },
+    {
+      "id": "re",
+      "label": "Ре",
+      "aliases": [
+        "Ре"
+      ],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Один палец опускается на мембрану поворотом запястья (пара к «Те»).",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "00:51"
+        },
+        {
+          "video": "V12",
+          "t": "02:37",
+          "note": "кисть касается обода, рука не отрывается от мембраны"
+        }
+      ],
+      "sound": {
+        "pitch": 560,
+        "bend": 0.9,
+        "decay": 0.08,
+        "noise": 0.3,
+        "gain": 0.4
+      },
+      "hand": {
+        "shape": "count",
+        "count": 1,
+        "hint": "1 палец вниз",
+        "note": "Какие именно пальцы — в речи не названо. Поворот запястья, пара к «Те».",
+        "status": "confirmed",
+        "source": {
+          "video": "V01",
+          "t": "00:51"
+        }
+      }
+    },
+    {
+      "id": "ke",
+      "label": "Ке",
+      "aliases": [
+        "Ке"
+      ],
+      "lane": "left",
+      "glyph": "hatched",
+      "technique": "Шлепок: сначала кончики пальцев, затем ладонь; запястье зафиксировано, локоть в фиксированном положении, сила идёт от плеча.",
+      "variants": "Может звучать с небольшим резонансом (V04 00:41; V08 01:00).",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "01:09",
+          "note": "посадка левой руки"
+        },
+        {
+          "video": "V01",
+          "t": "01:26"
+        },
+        {
+          "video": "V08",
+          "t": "00:47",
+          "note": "Ki, Ke, Ko — один и тот же шлепок"
+        },
+        {
+          "video": "V12",
+          "t": "00:50",
+          "note": "на занятии: сила от плеча, не раскачиваться"
+        },
+        {
+          "video": "V12",
+          "t": "03:20",
+          "note": "на левой руке не играть запястьем"
+        }
+      ],
+      "sound": {
+        "pitch": 140,
+        "bend": 0.8,
+        "decay": 0.07,
+        "noise": 0.6,
+        "gain": 0.7
+      },
+      "hand": {
+        "shape": "slap",
+        "hint": "Шлепок: кончики пальцев → ладонь",
+        "short": "Шлепок: пальцы → ладонь",
+        "note": "Запястье зафиксировано, сила от плеча.",
+        "status": "confirmed",
+        "source": {
+          "video": "V01",
+          "t": "01:26"
+        }
+      }
+    },
+    {
+      "id": "ko",
+      "label": "Ко",
+      "aliases": [
+        "Ко"
+      ],
+      "lane": "left",
+      "glyph": "hatched",
+      "technique": "Тот же шлепок, что «Ке».",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V08",
+          "t": "00:47"
+        }
+      ],
+      "sound": {
+        "pitch": 140,
+        "bend": 0.8,
+        "decay": 0.07,
+        "noise": 0.6,
+        "gain": 0.7
+      },
+      "hand": {
+        "shape": "slap",
+        "hint": "Шлепок, как «Ке»",
+        "status": "confirmed",
+        "source": {
+          "video": "V08",
+          "t": "00:47"
+        }
+      }
+    },
+    {
+      "id": "ki",
+      "label": "Ки",
+      "aliases": [
+        "Ки"
+      ],
+      "lane": "left",
+      "glyph": "hatched",
+      "technique": "Тот же шлепок, что «Ке».",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V08",
+          "t": "00:47"
+        },
+        {
+          "video": "V06",
+          "t": "00:03",
+          "note": "титр kaharba 2"
+        }
+      ],
+      "sound": {
+        "pitch": 140,
+        "bend": 0.8,
+        "decay": 0.07,
+        "noise": 0.6,
+        "gain": 0.7
+      },
+      "hand": {
+        "shape": "slap",
+        "hint": "Шлепок, как «Ке»",
+        "status": "confirmed",
+        "source": {
+          "video": "V08",
+          "t": "00:47"
+        }
+      }
+    },
+    {
+      "id": "ta",
+      "label": "Та",
+      "aliases": [
+        "Та"
+      ],
+      "lane": "right",
+      "glyph": "open",
+      "technique": "Четыре пальца вместе, открытый «отскакивающий» звук; часть кисти касается обода. В видео сказано «на этой стороне» — сторона словами не названа.",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "01:46"
+        },
+        {
+          "video": "V12",
+          "t": "04:22",
+          "note": "на занятии: четыре пальца, отскок, открытый звук, кисть на ободе"
+        }
+      ],
+      "sound": {
+        "pitch": 480,
+        "bend": 0.85,
+        "decay": 0.18,
+        "noise": 0.2,
+        "gain": 0.55
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "index",
+          "middle",
+          "ring",
+          "little"
+        ],
+        "hint": "4 пальца вместе, отскок",
+        "note": "«На этой стороне» — сторона словами не названа.",
+        "status": "confirmed",
+        "source": {
+          "video": "V01",
+          "t": "01:46"
+        }
+      }
+    },
+    {
+      "id": "tak",
+      "label": "Так",
+      "aliases": [
+        "Так"
+      ],
+      "lane": "both",
+      "glyph": "open",
+      "combination": [
+        "ta",
+        "ke"
+      ],
+      "technique": "«Та» и «Ке» одновременно двумя руками.",
+      "conflict": "На групповом занятии прозвучало «Так — один палец и Ко/Ке одновременно» (V12 00:23, 03:57), а в уроке «Та» — четыре пальца (V01 01:46). Нужна проверка преподавателем.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "03:22"
+        },
+        {
+          "video": "V08",
+          "t": "00:40"
+        },
+        {
+          "video": "V12",
+          "t": "00:23"
+        },
+        {
+          "video": "V12",
+          "t": "03:57"
+        }
+      ],
+      "sound": {
+        "pitch": 300,
+        "bend": 0.8,
+        "decay": 0.12,
+        "noise": 0.5,
+        "gain": 0.6
+      },
+      "hand": {
+        "shape": "together",
+        "hint": "«Та» + «Ке» одновременно",
+        "short": "«Та» + «Ке» вместе",
+        "note": "Пальцы для «Та» спорны: 4 пальца (V01 01:46) или 1 палец (V12 00:23).",
+        "status": "teacher",
+        "source": {
+          "video": "V01",
+          "t": "03:22"
+        }
+      }
+    },
+    {
+      "id": "da_l",
+      "label": "Да",
+      "aliases": [],
+      "lane": "left",
+      "glyph": "filled",
+      "technique": "Резонансный удар по большой мембране: часть кисти у запястья ударяет по ободу, пальцы отскакивают от мембраны.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V01",
+          "t": "05:30"
+        }
+      ],
+      "sound": {
+        "pitch": 95,
+        "bend": 0.7,
+        "decay": 0.5,
+        "noise": 0.05,
+        "gain": 0.8
+      },
+      "hand": {
+        "shape": "heel",
+        "hint": "Основание ладони об обод, пальцы отскакивают",
+        "short": "Основание ладони об обод, отскок",
+        "status": "confirmed",
+        "source": {
+          "video": "V01",
+          "t": "05:44"
+        }
+      }
+    },
+    {
+      "id": "da_r",
+      "label": "Да",
+      "aliases": [
+        "Да"
+      ],
+      "lane": "right",
+      "glyph": "open",
+      "technique": "Первый (указательный) палец, открытый звук.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V02",
+          "t": "00:14"
+        },
+        {
+          "video": "V05",
+          "t": "00:22"
+        }
+      ],
+      "sound": {
+        "pitch": 520,
+        "bend": 0.92,
+        "decay": 0.25,
+        "noise": 0.1,
+        "gain": 0.5
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "index"
+        ],
+        "hint": "1-й палец, открыто",
+        "note": "«First finger» — в английской речи указательный.",
+        "status": "confirmed",
+        "source": {
+          "video": "V02",
+          "t": "00:14"
+        }
+      }
+    },
+    {
+      "id": "gi",
+      "label": "Ги",
+      "aliases": [
+        "Ги"
+      ],
+      "lane": "left",
+      "glyph": "ring",
+      "technique": "Мягкий резонанс по большой мембране: часть кисти у запястья на ободе, пальцы отскакивают. Тише, чем «Де».",
+      "conflict": "В «Матан» (V05 01:01) «Ги» во второй половине назван громким звуком на большой мембране.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V02",
+          "t": "00:24"
+        },
+        {
+          "video": "V02",
+          "t": "01:31"
+        },
+        {
+          "video": "V05",
+          "t": "01:01"
+        }
+      ],
+      "sound": {
+        "pitch": 100,
+        "bend": 0.75,
+        "decay": 0.35,
+        "noise": 0.03,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "heel",
+        "hint": "Мягкий резонанс, пальцы отскакивают",
+        "short": "Мягкий резонанс, отскок",
+        "note": "Громкость спорна: в «Матан» «Ги» назван громким (V05 01:01).",
+        "status": "confirmed",
+        "source": {
+          "video": "V02",
+          "t": "00:24"
+        }
+      }
+    },
+    {
+      "id": "de",
+      "label": "Де",
+      "aliases": [
+        "Де"
+      ],
+      "lane": "left",
+      "glyph": "filled",
+      "technique": "Громкий резонанс по большой мембране (та же постановка, что «Ги»). Может играться и вместе с «На».",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V02",
+          "t": "01:21"
+        },
+        {
+          "video": "V02",
+          "t": "01:33"
+        }
+      ],
+      "sound": {
+        "pitch": 95,
+        "bend": 0.7,
+        "decay": 0.5,
+        "noise": 0.05,
+        "gain": 0.85
+      },
+      "hand": {
+        "shape": "heel",
+        "hint": "Громкий резонанс, пальцы отскакивают",
+        "short": "Громкий резонанс, отскок",
+        "status": "confirmed",
+        "source": {
+          "video": "V02",
+          "t": "01:21"
+        }
+      }
+    },
+    {
+      "id": "na",
+      "label": "На",
+      "aliases": [
+        "На"
+      ],
+      "lane": "right",
+      "glyph": "open",
+      "technique": "Первый (указательный) палец.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V02",
+          "t": "00:52"
+        }
+      ],
+      "sound": {
+        "pitch": 540,
+        "bend": 0.95,
+        "decay": 0.3,
+        "noise": 0.08,
+        "gain": 0.5
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "index"
+        ],
+        "hint": "1-й палец",
+        "note": "«First finger» — в английской речи указательный.",
+        "status": "confirmed",
+        "source": {
+          "video": "V02",
+          "t": "00:52"
+        }
+      }
+    },
+    {
+      "id": "na2",
+      "label": "На",
+      "aliases": [],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Два пальца вместе, остаются на мембране (в мантре «Рела»).",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V09",
+          "t": "00:54"
+        }
+      ],
+      "sound": {
+        "pitch": 500,
+        "bend": 0.9,
+        "decay": 0.06,
+        "noise": 0.25,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "count",
+        "count": 2,
+        "hint": "2 пальца вместе, остаются на мембране",
+        "short": "2 пальца вместе, не отрывать",
+        "note": "Какие именно пальцы — в речи не названо.",
+        "status": "confirmed",
+        "source": {
+          "video": "V09",
+          "t": "00:54"
+        }
+      }
+    },
+    {
+      "id": "ni",
+      "label": "Ни",
+      "aliases": [
+        "Ни"
+      ],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Три пальца «поднимаются» — как «Те».",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V03",
+          "t": "00:18"
+        },
+        {
+          "video": "V05",
+          "t": "01:13"
+        },
+        {
+          "video": "V08",
+          "t": "02:16"
+        }
+      ],
+      "sound": {
+        "pitch": 600,
+        "bend": 0.9,
+        "decay": 0.09,
+        "noise": 0.3,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "count",
+        "count": 3,
+        "hint": "3 пальца поднимаются, как «Те»",
+        "short": "3 пальца вверх, как «Те»",
+        "note": "Какие именно пальцы — в речи не названо.",
+        "status": "confirmed",
+        "source": {
+          "video": "V03",
+          "t": "00:18"
+        }
+      }
+    },
+    {
+      "id": "dhi",
+      "label": "Дхи",
+      "aliases": [
+        "Дхи"
+      ],
+      "lane": "left",
+      "glyph": "filled",
+      "technique": "Открытый резонансный звук «на этой стороне». Какая сторона — по речи не названо.",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V03",
+          "t": "00:11"
+        }
+      ],
+      "sound": {
+        "pitch": 100,
+        "bend": 0.72,
+        "decay": 0.45,
+        "noise": 0.05,
+        "gain": 0.75
+      },
+      "hand": {
+        "shape": "unknown",
+        "hint": "Открытый резонанс; пальцы не описаны",
+        "short": "Открытый резонанс; пальцы ?",
+        "note": "Сторона и пальцы по речи не названы.",
+        "status": "teacher",
+        "source": {
+          "video": "V03",
+          "t": "00:11"
+        }
+      }
+    },
+    {
+      "id": "dhin",
+      "label": "Дхин",
+      "aliases": [
+        "Дхин"
+      ],
+      "lane": "both",
+      "glyph": "filled",
+      "combination": [
+        "de",
+        "na"
+      ],
+      "technique": "«Де» и «На» одновременно.",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V08",
+          "t": "01:00"
+        }
+      ],
+      "sound": {
+        "pitch": 110,
+        "bend": 0.75,
+        "decay": 0.5,
+        "noise": 0.05,
+        "gain": 0.8
+      },
+      "hand": {
+        "shape": "together",
+        "hint": "«Де» + «На» одновременно",
+        "short": "«Де» + «На» вместе",
+        "status": "confirmed",
+        "source": {
+          "video": "V08",
+          "t": "01:00"
+        }
+      }
+    },
+    {
+      "id": "di",
+      "label": "Ди",
+      "aliases": [
+        "Ди"
+      ],
+      "lane": "left",
+      "glyph": "ring",
+      "technique": "Мягкий резонанс по большой мембране; в «Даспере» сказано «мягкий резонанс… первым пальцем».",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V08",
+          "t": "02:09"
+        }
+      ],
+      "sound": {
+        "pitch": 105,
+        "bend": 0.78,
+        "decay": 0.3,
+        "noise": 0.03,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "index"
+        ],
+        "hint": "Мягкий резонанс 1-м пальцем",
+        "note": "Сказано «мягкий резонанс… первым пальцем» при ударе по большой мембране — сочетание требует проверки.",
+        "status": "teacher",
+        "source": {
+          "video": "V08",
+          "t": "02:09"
+        }
+      }
+    },
+    {
+      "id": "di_held",
+      "label": "Ди",
+      "aliases": [],
+      "lane": "left",
+      "glyph": "small",
+      "technique": "Мягкий, «придержанный» звук: два пальца остаются на мембране, затем играет один палец (в мантре «Рела»).",
+      "status": "confirmed",
+      "sources": [
+        {
+          "video": "V09",
+          "t": "02:19"
+        },
+        {
+          "video": "V09",
+          "t": "02:45"
+        }
+      ],
+      "sound": {
+        "pitch": 120,
+        "bend": 0.85,
+        "decay": 0.1,
+        "noise": 0.15,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "count",
+        "count": 2,
+        "then": 1,
+        "hint": "2 пальца лежат, играет 1 палец",
+        "short": "2 пальца лежат, 1 играет",
+        "note": "Какие именно пальцы — в речи не названо.",
+        "status": "confirmed",
+        "source": {
+          "video": "V09",
+          "t": "02:45"
+        }
+      }
+    },
+    {
+      "id": "ti",
+      "label": "Ти",
+      "aliases": [
+        "Ти"
+      ],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Палец остаётся / лёгкое касание мембраны (в мантре «Рела»). Разница между первым и вторым «Ти» по речи понятна не полностью.",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V09",
+          "t": "01:01"
+        }
+      ],
+      "sound": {
+        "pitch": 650,
+        "bend": 0.92,
+        "decay": 0.06,
+        "noise": 0.3,
+        "gain": 0.35
+      },
+      "hand": {
+        "shape": "count",
+        "count": 1,
+        "hint": "Палец остаётся / лёгкое касание",
+        "note": "Разница между двумя «Ти» по речи понятна не полностью; какой палец — не названо.",
+        "status": "teacher",
+        "source": {
+          "video": "V09",
+          "t": "01:01"
+        }
+      }
+    },
+    {
+      "id": "ti_res",
+      "label": "Ти",
+      "aliases": [],
+      "lane": "right",
+      "glyph": "open",
+      "technique": "Резонансный звук первым пальцем (второе «Ти» в «на ти ти»).",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V09",
+          "t": "01:08"
+        }
+      ],
+      "sound": {
+        "pitch": 560,
+        "bend": 0.95,
+        "decay": 0.28,
+        "noise": 0.08,
+        "gain": 0.45
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "index"
+        ],
+        "hint": "Резонанс 1-м пальцем",
+        "status": "teacher",
+        "source": {
+          "video": "V09",
+          "t": "01:08"
+        }
+      }
+    },
+    {
+      "id": "slide",
+      "label": "Ди↘",
+      "aliases": [],
+      "lane": "left",
+      "glyph": "slide",
+      "technique": "Скольжение в два шага: сначала резонанс средним пальцем, затем скольжение сверху вниз по мембране с лёгким нажимом. Нужна низко настроенная большая мембрана (V12 19:44).",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V10",
+          "t": "00:41"
+        },
+        {
+          "video": "V10",
+          "t": "01:38"
+        }
+      ],
+      "sound": {
+        "pitch": 90,
+        "bend": 1.35,
+        "decay": 0.45,
+        "noise": 0.02,
+        "gain": 0.6
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "middle"
+        ],
+        "hint": "Средний палец: резонанс, затем скольжение вниз",
+        "short": "Средний: резонанс → скользит вниз",
+        "note": "Нужна низко настроенная большая мембрана (V12 19:44).",
+        "status": "teacher",
+        "source": {
+          "video": "V10",
+          "t": "00:48"
+        }
+      }
+    },
+    {
+      "id": "ge",
+      "label": "Ге",
+      "aliases": [
+        "Ге"
+      ],
+      "lane": "unknown",
+      "glyph": "unknown",
+      "technique": "Техника в видео отдельно не объяснена.",
+      "status": "unknown",
+      "sources": [
+        {
+          "video": "V07",
+          "t": "00:03",
+          "note": "титр lopha / matan complete"
+        }
+      ],
+      "sound": {
+        "pitch": 110,
+        "bend": 0.8,
+        "decay": 0.2,
+        "noise": 0.1,
+        "gain": 0.4
+      },
+      "hand": {
+        "shape": "unknown",
+        "hint": "Техника уточняется",
+        "status": "unknown",
+        "source": {
+          "video": "V07",
+          "t": "00:03"
+        }
+      }
+    },
+    {
+      "id": "ne",
+      "label": "Не",
+      "aliases": [
+        "Не"
+      ],
+      "lane": "unknown",
+      "glyph": "unknown",
+      "technique": "Техника в видео отдельно не объяснена.",
+      "status": "unknown",
+      "sources": [
+        {
+          "video": "V07",
+          "t": "00:03",
+          "note": "титр matan complete"
+        }
+      ],
+      "sound": {
+        "pitch": 560,
+        "bend": 0.9,
+        "decay": 0.1,
+        "noise": 0.2,
+        "gain": 0.4
+      },
+      "hand": {
+        "shape": "unknown",
+        "hint": "Техника уточняется",
+        "status": "unknown",
+        "source": {
+          "video": "V07",
+          "t": "00:03"
+        }
+      }
+    },
+    {
+      "id": "ka",
+      "label": "Ка",
+      "aliases": [
+        "Ка"
+      ],
+      "lane": "unknown",
+      "glyph": "unknown",
+      "technique": "Техника в видео отдельно не объяснена.",
+      "status": "unknown",
+      "sources": [
+        {
+          "video": "V07",
+          "t": "00:03",
+          "note": "титр matan complete"
+        }
+      ],
+      "sound": {
+        "pitch": 150,
+        "bend": 0.8,
+        "decay": 0.07,
+        "noise": 0.5,
+        "gain": 0.5
+      },
+      "hand": {
+        "shape": "unknown",
+        "hint": "Техника уточняется",
+        "status": "unknown",
+        "source": {
+          "video": "V07",
+          "t": "00:03"
+        }
+      }
+    },
+    {
+      "id": "tet",
+      "label": "Тет",
+      "aliases": [
+        "Тет"
+      ],
+      "lane": "right",
+      "glyph": "small",
+      "technique": "Средним пальцем по малой мембране (речь: «просто стучим средним пальцем»); на «те» возможен шлепок, вместо «те» — «тере».",
+      "status": "teacher",
+      "sources": [
+        {
+          "video": "V10",
+          "t": "02:52"
+        },
+        {
+          "video": "V10",
+          "t": "03:16"
+        },
+        {
+          "video": "V10",
+          "t": "04:21"
+        }
+      ],
+      "sound": {
+        "pitch": 600,
+        "bend": 0.9,
+        "decay": 0.08,
+        "noise": 0.3,
+        "gain": 0.4
+      },
+      "hand": {
+        "shape": "fingers",
+        "fingers": [
+          "middle"
+        ],
+        "hint": "Средний палец по малой мембране",
+        "status": "teacher",
+        "source": {
+          "video": "V10",
+          "t": "04:21"
+        }
+      }
+    }
+  ]
+}
