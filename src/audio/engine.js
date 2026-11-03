@@ -124,11 +124,20 @@ export class Player {
     const gen = this.gen;
     this.lastError = null;
     try {
-      this.ctx ??= new (window.AudioContext || window.webkitAudioContext)();
-      if (this.ctx.state === 'suspended') {
+      // Request the media category during the Play gesture, before Web Audio starts.
+      // On iOS the default category can mute synthesis while the audio clock runs.
+      try {
+        const session = window.navigator?.audioSession;
+        if (session && session.type !== 'playback') session.type = 'playback';
+      } catch { /* Optional capability. Browsers without it still use Web Audio. */ }
+      if (!this.ctx || this.ctx.state === 'closed') {
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (this.ctx.state === 'suspended' || this.ctx.state === 'interrupted') {
         this.pending = true;
         await this.ctx.resume();
       }
+      if (this.ctx.state !== 'running') throw new Error('Звук приостановлен браузером');
     } catch (e) {
       if (gen !== this.gen) return 'cancelled';
       this.pending = false;

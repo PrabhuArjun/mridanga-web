@@ -8,7 +8,7 @@ import {
   normalizeProgress, recordRun, markRep, toggleLadderStep, setLessonDone, lessonSummary,
   exerciseProgress, emptyProgress,
 } from './model/progress.js';
-import { Player } from './audio/engine.js';
+import { Player } from './audio/engine.js?v=0.2.2';
 import { createPlan, positionAtTime } from './audio/transport.js';
 import { createLane } from './ui/lane.js';
 import { createMotion } from './ui/motion.js';
@@ -22,7 +22,7 @@ import {
   lessonReliability, techniqueReliability, lanesReliability, weakestStatus,
 } from './model/reliability.js';
 
-const APP_VERSION = '0.2.1';
+const APP_VERSION = '0.2.2';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', view: 'mridanga.view.v1' };
 const app = document.getElementById('app');
 const player = new Player();
