@@ -8,21 +8,19 @@ import {
   normalizeProgress, recordRun, markRep, toggleLadderStep, setLessonDone, lessonSummary,
   exerciseProgress, emptyProgress,
 } from './model/progress.js';
-import { Player } from './audio/engine.js?v=0.2.2';
+import { Player } from './audio/engine.js?v=0.2.3';
 import { createPlan, positionAtTime } from './audio/transport.js';
-import { createLane } from './ui/lane.js';
+import { createLane } from './ui/lane.js?v=0.2.3';
 import { createMotion } from './ui/motion.js';
-import { handSvg } from './ui/hand.js';
+import { handSvg } from './ui/hand.js?v=0.2.3';
 import { eventCue, techKey } from './model/cue.js';
 import { METRONOME_MODES } from './audio/scheduler.js';
 import { renderStaff, glyphSvg } from './ui/staff.js';
 import { followScrollLeft } from './ui/follow.js';
 import { createPracticeRun } from './model/practice-run.js';
-import {
-  lessonReliability, techniqueReliability, lanesReliability, weakestStatus,
-} from './model/reliability.js';
+import { techniqueReliability } from './model/reliability.js';
 
-const APP_VERSION = '0.2.2';
+const APP_VERSION = '0.2.3';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', view: 'mridanga.view.v1' };
 const app = document.getElementById('app');
 const player = new Player();
@@ -40,7 +38,6 @@ let C = null;      // действующий контент (с правками
 let strokeMap = new Map();
 let progress = normalizeProgress(store.get(KEYS.progress));
 let overrideNotice = '';
-const mediaAvailable = new Map();
 // Идущая практика (одна на страницу): end() записывает полные циклы и
 // останавливает звук, checkpoint() записывает их, не останавливая.
 let practice = null;
@@ -52,7 +49,6 @@ function endPractice() {
 }
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const sec = (t) => String(t).split(':').reduce((a, x) => a * 60 + Number(x), 0);
 
 async function loadJson(path) {
   const r = await fetch(path, { cache: 'no-cache' });
@@ -80,6 +76,15 @@ function applyOverrides() {
     overrideNotice = o ? 'Действуют правки преподавателя, сохранённые в этом браузере.' : '';
     C = next;
   }
+  C = { ...C, modules: C.modules.map((m) => ({ ...m,
+    title: m.id === 'm5' ? 'Упражнение с метрономом' : m.title,
+    lessons: m.lessons.map((l) => l.id === 'care'
+      ? { ...l, title: 'Настройка и уход', summary: 'Настройка инструмента и комфорт во время игры.',
+          steps: ['Для изменения натяжения мембран обратитесь к мастеру.', 'Следите за свободой движений и комфортом рук.'] }
+      : l.id === 'note-kenana'
+        ? { ...l, summary: 'Восемь слогов с басовыми акцентами на первом, четвёртом и седьмом ударах. Группировка: 3 + 3 + 2.' }
+        : l),
+  })) };
   strokeMap = new Map(C.strokes.map((s) => [s.id, s]));
 }
 
@@ -90,45 +95,9 @@ function saveProgress(p) {
 
 // ---------- общие элементы ----------
 
-function chip(status) {
-  const label = C.config.statuses?.[status] ?? status;
-  return `<span class="chip st-${esc(status)}">${esc(label)}</span>`;
-}
-
-/** Статус одного слоя записи с подписью: «Слоги: подтверждено видео». */
-function layerChip(layer, status) {
-  if (!status) return '';
-  const label = C.config.statuses?.[status] ?? status;
-  return `<span class="chip st-${esc(status)}">${esc(layer)}: ${esc(label)}</span>`;
-}
-
 function feelChip(feelId) {
   const f = C.config.feels?.find((x) => x.id === feelId);
-  if (!f) return '';
-  const unsure = f.status && f.status !== 'confirmed' ? ` · ${C.config.statuses?.[f.status] ?? f.status}` : '';
-  const basis = f.basis ? `\n${f.basis.text}: ${C.config.statuses?.[f.basis.status] ?? f.basis.status}` : '';
-  return `<span class="chip feel" title="${esc(f.description + basis)}">${esc(f.label)}${esc(unsure)}</span>`;
-}
-
-/** Пояснение к обозначению счёта на странице урока: что сказано прямо, а что — толкование. */
-function feelNote(feelId) {
-  const f = C.config.feels?.find((x) => x.id === feelId);
-  if (!f) return '';
-  const src = f.source ? ` <span class="tc">${esc(f.source.video)} ${esc(f.source.t)}</span>` : '';
-  const basis = f.basis
-    ? `<br>${esc(f.basis.text)}: ${chip(f.basis.status)} <span class="muted">${esc(f.basis.note)}</span>` : '';
-  return `<p class="small">«${esc(f.label)}»: ${esc(f.description)}${src} ${chip(f.status)}${basis}</p>`;
-}
-
-function reliabilityChips(lesson) {
-  const r = lessonReliability(lesson);
-  if (r.content) return layerChip('Содержание', r.content);
-  return layerChip('Слоги', r.syllables) + layerChip('Ритм', r.rhythm);
-}
-
-function srcText(s) {
-  if (!s.video) return esc(s.note ?? '');
-  return `<span class="tc">${esc(s.video)} ${esc(s.t)}</span>${s.note ? ` — ${esc(s.note)}` : ''}`;
+  return f?.status === 'confirmed' ? `<span class="chip feel">${esc(f.label)}</span>` : '';
 }
 
 function allLessons() {
@@ -146,25 +115,33 @@ function laneLabel(id) {
   return C.config.lanes.find((l) => l.id === id)?.label ?? id;
 }
 
-function strokeCard(s, { withSources = true } = {}) {
+function strokeCard(s) {
+  const described = s.status === 'confirmed' && !s.conflict;
+  const hand = described && s.hand?.status === 'confirmed' && s.hand.shape !== 'unknown' ? s.hand : null;
   return `<article class="card stroke-card">
     ${glyphIcon(s)}
     <div>
-      <div class="label">${esc(s.label)} <span class="id">${esc(s.id)}</span></div>
-      <div class="small muted">${esc(laneLabel(s.lane))}</div>
-      <p class="small">${esc(s.technique)}</p>
-      ${s.hand ? `<div class="hand-hint small">${handSvg(s.hand, { lane: s.lane === 'left' ? 'left' : 'right', tentative: s.hand.status !== 'confirmed', size: 32 })}
-        <span>Подсказка: ${esc(s.hand.hint)}${s.hand.note ? ` — <span class="muted">${esc(s.hand.note)}</span>` : ''}${s.hand.short ? `<br><span class="muted">На ленте кратко: «${esc(s.hand.short)}»</span>` : ''}
-        <span class="tc">${esc(s.hand.source.video)} ${esc(s.hand.source.t)}</span> ${layerChip('Подсказка кисти', s.hand.status)}</span></div>` : ''}
-      ${s.variants ? `<p class="small muted">Варианты: ${esc(s.variants)}</p>` : ''}
-      ${s.conflict ? `<p class="conflict">Расхождение: ${esc(s.conflict)}</p>` : ''}
-      <div class="meta">${layerChip('Описание удара', s.status)}
-        <button type="button" data-hear="${esc(s.id)}" title="Синтезированный звук, не запись мриданги">Послушать (синтез)</button>
-      </div>
-      ${withSources && s.sources?.length ? `<ul class="sources small">${s.sources.map((x) => `<li>${srcText(x)}</li>`).join('')}</ul>` : ''}
-      ${withSources ? '<p class="small muted">Статус относится к месту, где удар объяснён (источники выше), а не к каждой мантре, где встречается слог.</p>' : ''}
+      <div class="label">${esc(s.label)}</div>
+      ${described ? `<div class="small muted">${esc(laneLabel(s.lane))}</div><p class="small">${esc(s.technique)}</p>` : ''}
+      ${hand ? `<div class="hand-hint small">${handSvg(hand, { lane: s.lane === 'left' ? 'left' : 'right', size: 32 })}
+        <span>${esc(hand.hint)}</span></div>` : ''}
+      <div class="meta"><button type="button" data-hear="${esc(s.id)}" title="Синтезированный звук">Послушать</button></div>
     </div>
   </article>`;
+}
+
+// A student should never be taught a disputed finger assignment as established.
+// Keep the syllable/audio for practice, but omit that hand illustration.
+function practiceCue(slot, ctx) {
+  const cue = eventCue(slot, ctx);
+  if (cue.kind !== 'stroke') return cue;
+  const disputed = cue.notes.some((n) => n.status !== 'confirmed');
+  const parts = cue.parts.filter((p) => !disputed && p.hand.status === 'confirmed' &&
+    strokeMap.get(p.strokeId)?.status === 'confirmed' && !strokeMap.get(p.strokeId)?.conflict);
+  const complete = parts.length === cue.parts.length;
+  return { ...cue, parts: complete ? parts : [],
+    combos: complete ? cue.combos.filter((c) => c.hand?.status === 'confirmed') : [],
+  };
 }
 
 function bindHearButtons(root) {
@@ -203,8 +180,7 @@ function soundMap() {
 
 function viewCatalog() {
   const intro = `<h1>Уроки</h1>
-    <p class="muted">Программа собрана по видеокурсу «Mridanga Lessons» (14 видео). Каждый вывод помечен уровнем уверенности.
-    Слоги записаны кириллицей на слух и по титрам — это не утверждённая преподавателем терминология.</p>
+    <p class="muted">Выберите урок, начните в медленном темпе и следуйте подсказкам ленты.</p>
     ${overrideNotice ? `<p class="warn small">${esc(overrideNotice)}</p>` : ''}`;
   const mods = C.modules.map((m) => `<section>
       <h2>${esc(m.title)}</h2>
@@ -215,7 +191,7 @@ function viewCatalog() {
         return `<a class="card" href="#/lesson/${encodeURIComponent(l.id)}">
           <h3>${esc(l.title)}${sm.done ? ' ✓' : ''}</h3>
           <div class="small muted">${esc(l.summary)}</div>
-          <div class="meta">${reliabilityChips(l)}${feelChip(l.feel)}${prog}</div>
+          <div class="meta">${feelChip(l.feel)}${prog}</div>
         </a>`;
       }).join('')}</div></section>`).join('');
   app.innerHTML = intro + mods;
@@ -229,97 +205,31 @@ function viewLesson(lessonId, exId) {
   }
   const ex = lesson.exercises.find((e) => e.id === exId) ?? lesson.exercises[0];
   const usedIds = new Set();
-  const techStatuses = [];
   for (const e of lesson.exercises) {
     const r = parsePattern(e.pattern, { strokes: C.strokes, subdivision: e.subdivision, symbols: C.config.symbols });
     r.slots.forEach((s) => s.strokes.forEach((id) => usedIds.add(id)));
-    techStatuses.push(techniqueReliability(e, lesson, r.slots, strokeMap).status);
   }
-  const techChip = layerChip('Выбор удара', weakestStatus(techStatuses));
   const sm = lessonSummary(progress, lesson);
-  const video = lesson.video
-    ? `<section class="video-box" data-video="${esc(lesson.video.id)}">
-        <h2>Эталон из видео</h2>
-        <p class="small muted">Фрагмент <span class="tc">${esc(lesson.video.id)} ${esc(lesson.video.start)}–${esc(lesson.video.end)}</span>.</p>
-        <div class="video-slot"><p class="small muted">Проверяю, подключено ли видео…</p></div>
-      </section>` : '';
 
   app.innerHTML = `
     <p class="small"><a href="#/">← Уроки</a> · ${esc(lesson.module.title)}</p>
     <div class="lesson-head">
       <h1>${esc(lesson.title)}</h1>
-      <div class="meta row">${reliabilityChips(lesson)}${techChip}${feelChip(lesson.feel)}</div>
+      <div class="meta row">${feelChip(lesson.feel)}</div>
       <p>${esc(lesson.summary)}</p>
-      ${feelNote(lesson.feel)}
     </div>
     ${lesson.steps?.length ? `<h2>Как заниматься</h2><ol>${lesson.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
     ${ex ? `<h2>Упражнение</h2>
       ${lesson.exercises.length > 1 ? `<div class="tabs" role="tablist">${lesson.exercises.map((e) =>
         `<a role="tab" class="chip plain" aria-selected="${e.id === ex.id}" href="#/lesson/${encodeURIComponent(lesson.id)}/${encodeURIComponent(e.id)}"${e.id === ex.id ? ' style="color:var(--accent)"' : ''}>${esc(e.title)}</a>`).join('')}</div>` : ''}
       <div id="exercise"></div>` : '<p class="muted">В этом уроке нет ритмических упражнений.</p>'}
-    ${video}
     ${usedIds.size ? `<h2>Удары урока</h2><div class="grid">${[...usedIds].map((id) => strokeCard(strokeMap.get(id), { withSources: false })).join('')}</div>` : ''}
-    <h2>Источники и уверенность</h2>
-    <ul class="sources small">${lesson.sources.map((s) => `<li>${s.video ? `<button type="button" class="tc-link" data-seek="${esc(s.video)}|${esc(s.t)}">${esc(s.video)} ${esc(s.t)}</button>${s.note ? ` — ${esc(s.note)}` : ''}` : srcText(s)}</li>`).join('')}</ul>
     <h2>Отметка</h2>
     <label><input type="checkbox" id="lesson-done" ${sm.done ? 'checked' : ''}> Урок пройден (самооценка)</label>
   `;
   if (ex) mountExercise(document.getElementById('exercise'), ex, { lesson });
   app.querySelector('#lesson-done').addEventListener('change', (e) => saveProgress(setLessonDone(progress, lesson.id, e.target.checked)));
   bindHearButtons(app);
-  if (lesson.video) mountVideo(app.querySelector('.video-box'), lesson.video);
-}
-
-async function hasMedia(_id) {
-  // Course videos are not included in this public release.
-  return false;
-}
-
-async function mountVideo(box, v) {
-  const slot = box.querySelector('.video-slot');
-  const ok = await hasMedia(v.id);
-  if (!ok) {
-    slot.innerHTML = `<p class="small warn">Видео курса не размещены на этом сайте. Таймкод источника:
-      <span class="tc">${esc(v.id)} ${esc(v.start)}–${esc(v.end)}</span>. Сверяйте технику с преподавателем.</p>`;
-    return;
-  }
-  slot.innerHTML = `<video controls preload="metadata" src="media/${encodeURIComponent(v.id)}.mp4#t=${sec(v.start)},${sec(v.end)}"></video>`;
-  const video = slot.querySelector('video');
-  app.querySelectorAll('[data-seek]').forEach((b) => {
-    const [vid, t] = b.dataset.seek.split('|');
-    if (vid !== v.id) { b.disabled = true; b.title = 'Это другое видео курса'; return; }
-    b.addEventListener('click', () => { video.currentTime = sec(t); video.play(); video.scrollIntoView({ block: 'nearest' }); });
-  });
-}
-
-/** Что в записи подтверждено: слоги, ритм, выбор удара и руки — отдельными строками. */
-function reliabilityBox(ex, lesson, parsed, lanes) {
-  const tech = techniqueReliability(ex, lesson, parsed.slots, strokeMap);
-  const hands = lanesReliability(lanes);
-  const rhythmText = ex.rhythmNote
-    ?? (ex.rhythmStatus === 'confirmed' ? ''
-      : 'В видео длительности слогов не названы; показаны равными, раскладка по долям — допущение прототипа.');
-  const why = {
-    lesson: (i) => `объяснён в видео этого урока${i.source ? `: <span class="tc">${esc(i.source.video)} ${esc(i.source.t)}</span>` : ''}`,
-    transferred: (i) => `техника взята из <span class="tc">${esc(i.source?.video ?? '?')} ${esc(i.source?.t ?? '')}</span>; в видео этого урока отдельно не объяснена — допущение`,
-    card: () => 'описание самого удара не подтверждено (см. «Удары»)',
-    conflict: () => 'в видео есть расхождение по этому удару (см. «Удары»)',
-    alias: (i) => (i.note
-      ? `слог «${esc(i.label)}» играется как «${esc(i.technique)}»: ${esc(i.note)} <span class="tc">${esc(i.source.video)} ${esc(i.source.t)}</span>`
-      : `слог «${esc(i.label)}» играется как «${esc(i.technique)}» — толкование прототипа`),
-  };
-  const items = tech.items.map((i) => `<li>«${esc(i.label)}» <span class="id">${esc(i.id)}</span> ${chip(i.status)} — ${why[i.reason](i)}</li>`).join('');
-  const notes = tech.notes.map((n) => `<li>${esc(n.text)} ${chip(n.status)}${n.video ? ` <span class="tc">${esc(n.video)} ${esc(n.t)}</span>` : ''}</li>`).join('');
-  return `<dl class="reliab" aria-label="Что в этой записи подтверждено">
-    <dt>Слоги</dt><dd>${chip(ex.status)}</dd>
-    <dt>Длительности и доли</dt><dd>${chip(ex.rhythmStatus)}${rhythmText ? ` <span class="small">${esc(rhythmText)}</span>` : ''}</dd>
-    <dt>Выбор удара для слога</dt><dd>${chip(tech.status)}
-      <details><summary class="small">по слогам</summary>
-        <p class="small muted">Слог не закреплён за аппликатурой (V02 01:02), поэтому удар для слога выбран по объяснению в уроке.</p>
-        <ul class="sources small">${items}${notes}</ul></details></dd>
-    <dt>Руки и мембраны (линии записи)</dt><dd>${chip(hands.status)}
-      <span class="small">${esc(hands.lanes.map((l) => l.note).filter(Boolean)[0] ?? '')}</span></dd>
-  </dl>`;
 }
 
 /** Вид практики: лента, без движения или полная запись. Системное «уменьшить движение» → без движения. */
@@ -341,26 +251,24 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     const st = strokeMap.get(id);
     return st?.combination ? st.combination.map((c) => strokeMap.get(c)?.lane) : [st?.lane];
   })));
-  const lanes = C.config.lanes.filter((l) => l.id !== 'unknown' || usedLanes.has('unknown'));
+  const lanes = C.config.lanes.filter((l) => l.id !== 'unknown' || usedLanes.has('unknown'))
+    .map((l) => l.id === 'unknown' ? { ...l, label: 'Слоги' } : l);
   const defaults = C.defaults ?? { slowRate: 60, fastFactor: 2, ladder: { from: 30, to: 90, step: 10 } };
   const slow = ex.tempo?.slow ?? defaults.slowRate;
   const fast = Math.round(slow * (defaults.fastFactor ?? 2));
   const ladderRates = tempoLadder(defaults.ladder.from, defaults.ladder.to, defaults.ladder.step);
   const prog = () => exerciseProgress(progress, ex.id);
   const perCycle = countStrokes(parsed.slots);
-  const laneNote = (l) => (l.status && l.status !== 'confirmed' ? ` (${C.config.statuses?.[l.status] ?? l.status})` : '');
   // Подсказка для каждой поддоли рисунка — по удару события, а не по слогу.
   const tech = techniqueReliability(ex, lesson, parsed.slots, strokeMap);
   const cueCtx = {
     strokeMap, lanes: C.config.lanes, notes: ex.techniqueNotes ?? [],
     tech: new Map(tech.items.map((i) => [techKey(i), i])),
   };
-  const cues = parsed.slots.map((slot, i) => eventCue({ ...slot, slotIndex: i }, cueCtx));
+  const cues = parsed.slots.map((slot, i) => practiceCue({ ...slot, slotIndex: i }, cueCtx));
   const viewName = `view-${ex.id}-${sandbox ? 'sb' : 'ex'}`;
 
   root.innerHTML = `
-    ${sandbox ? `<div class="meta row small">${layerChip('Слоги', ex.status)} ${layerChip('Ритм', ex.rhythmStatus)}</div>`
-      : reliabilityBox(ex, lesson, parsed, lanes)}
     <div class="view-switch" role="radiogroup" aria-label="Вид упражнения">
       <label><input type="radio" name="${viewName}" value="moving"> Лента</label>
       <label><input type="radio" name="${viewName}" value="static"> Без движения</label>
@@ -369,7 +277,12 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     <div class="practice-sticky">
       <div class="lane" id="lane" aria-label="Лента ударов: текущий и следующие по записи"></div>
       <div class="row play-row">
-        <button type="button" class="primary" id="play">▶ Играть</button>
+        <div class="transport" role="group" aria-label="Воспроизведение">
+          <button type="button" class="primary" id="play">▶ Играть</button>
+          <button type="button" id="pause" disabled>Ⅱ Пауза</button>
+          <button type="button" id="stop" disabled>■ Стоп</button>
+        </div>
+        <span class="small playback-state" id="playback-state" role="status">Готово к игре</span>
         <div class="now-syl" id="now" aria-hidden="true">—</div>
         <div class="counters" aria-live="polite">
           <div class="counter">Удары<b id="c-strokes">0</b></div>
@@ -378,12 +291,11 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
       </div>
       <p class="small tempo-msg" id="tempo-msg" aria-live="polite"></p>
     </div>
-    <p class="small muted lane-note">Лента показывает <b>запись</b> упражнения по времени звука, а не вашу игру: приложение не слышит, что и какой рукой играете вы.
-      Пальцы показаны только там, где они названы в видео; число в ладони — сколько пальцев, если какие именно не названо.
-      «≈ предп.» — предположение (в том числе «П · малая≈»: какая рука на какой мембране — вывод из речи), «? проверить» — нужна проверка преподавателем, «? уточняется» — приём в видео не объяснён. Звук — условный синтез.</p>
+    <p class="small muted lane-note">Следите за текущим и следующими ударами. Число на ладони обозначает количество пальцев.
+      «Пауза» сохраняет место, «Стоп» возвращает к началу.</p>
     <div class="staff-block">
       <div class="staff-wrap">${renderStaff({ beats: parsed.beats, strokeMap, lanes, grouping: ex.grouping, title: `Запись: ${ex.title}` })}</div>
-      <div class="staff-legend">${lanes.map((l, i) => `<span>Линия ${i + 1}: ${esc(l.label)}${esc(laneNote(l))}</span>`).join('')}
+      <div class="staff-legend">${lanes.map((l, i) => `<span>Линия ${i + 1}: ${esc(l.label)}</span>`).join('')}
         <span>${parsed.beats.length} дол. × ${ex.subdivision} поддол. · ${perCycle} уд. в цикле</span></div>
     </div>
     <div class="controls">
@@ -399,7 +311,7 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
         <label>Повторять <select id="cycles">
           <option value="1">1 цикл</option><option value="2">2 цикла</option><option value="4" selected>4 цикла</option>
           <option value="8">8 циклов</option><option value="Infinity">без остановки</option></select></label>
-        <label title="Синтезированный звук ударов, не запись мриданги"><input type="checkbox" id="synth" checked> Эталонный звук (синтез)</label>
+        <label title="Синтезированный звук ударов"><input type="checkbox" id="synth" checked> Звук ударов</label>
       </div>
       <p class="small muted">Темп во время игры меняется с начала следующего цикла; полные циклы прежнего темпа записываются с прежним темпом.</p>
       ${sandbox ? '' : `<p class="small muted">В прогресс записываются только полные циклы — и при «Стоп», и при уходе со страницы.</p>
@@ -461,7 +373,20 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
   window.addEventListener('resize', onResize);
 
   const play = $('#play');
+  const pause = $('#pause');
+  const stop = $('#stop');
+  const state = $('#playback-state');
   const wrap = $('.staff-wrap');
+  const syncControls = () => {
+    play.textContent = player.paused ? '▶ Продолжить' : '▶ Играть';
+    play.disabled = Boolean(run) && !player.paused || player.starting;
+    pause.disabled = !run || !player.playing || player.starting;
+    stop.disabled = !run;
+    cyclesSel.disabled = Boolean(run);
+    metro.disabled = Boolean(run);
+    $('#synth').disabled = Boolean(run);
+    state.textContent = !run ? 'Готово к игре' : player.starting ? 'Включаю звук…' : player.paused ? 'На паузе' : 'Играет';
+  };
 
   const setRate = (v) => {
     const n = Math.min(240, Math.max(20, Math.round(Number(v) || slow)));
@@ -526,21 +451,46 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     }
   };
   const finish = () => {
+    player.stop();
     commit(true);
     run = null;
     motion.sync();
     if (practice?.root === root) practice = null;
-    play.textContent = '▶ Играть';
+    syncControls();
     highlight(-1);
     $('#now').textContent = '—';
+    $('#c-strokes').textContent = '0';
+    $('#c-cycles').textContent = '0';
+    tempoMsg.textContent = '';
+    wrap.scrollLeft = 0;
     // Лента возвращается к началу: первые удары следующего запуска.
     lane.setPlan(previewPlan());
     lane.setPosition(-1);
   };
+  pause.addEventListener('click', () => {
+    if (!run || !player.pause()) return;
+    commit(false);
+    if (view === 'moving' && !reducedMotion()) lane.setPosition(positionAtTime(player.plan, player.now()));
+    motion.sync();
+    syncControls();
+  });
+  stop.addEventListener('click', () => {
+    if (!run) return;
+    player.stop();
+    finish();
+  });
   play.addEventListener('click', async () => {
     if (run) {
-      player.stop();
-      finish();
+      if (!player.paused || player.starting) return;
+      const thisRun = run;
+      const pending = player.resume();
+      syncControls();
+      const status = await pending;
+      if (run !== thisRun) return;
+      syncControls();
+      motion.sync();
+      if (status === 'failed') tempoMsg.textContent = startFailureText();
+      else if (tempoMsg.textContent === startFailureText()) tempoMsg.textContent = '';
       return;
     }
     endPractice();
@@ -555,12 +505,11 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     $('#c-cycles').textContent = '0';
     tempoMsg.textContent = '';
     wrap.scrollLeft = 0;
-    play.textContent = '■ Стоп';
     lane.setPlan(plan);
     lane.setPosition(-1);
     const thisRun = run;
     $('#now').textContent = 'включаю звук…';
-    const status = await player.start({
+    const pending = player.start({
       plan, strokeSounds: soundMap(), metronomeId: metro.value, playStrokes: $('#synth').checked,
       onStep: (ev) => {
         if (run !== thisRun) return;
@@ -578,6 +527,8 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
       },
       onEnd: () => { if (run === thisRun) finish(); },
     });
+    syncControls();
+    const status = await pending;
     if (run !== thisRun) return; // за время ожидания нажали «Стоп» или ушли со страницы
     if (status !== 'started') {
       // Браузер отказал (или запуск отменён в обход этой кнопки): интерфейс — в исходное.
@@ -586,14 +537,14 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
       return;
     }
     if ($('#now').textContent === 'включаю звук…') $('#now').textContent = '—';
+    syncControls();
     motion.sync();
   });
 }
 
 function viewStrokes() {
   app.innerHTML = `<h1>Удары</h1>
-    <p class="muted">Один и тот же слог в курсе может играться по-разному: преподаватель прямо говорит, что слог не закреплён за аппликатурой (V02 01:02).
-    Поэтому карточка — это удар (техника), а слог — его подпись. Звук кнопки «Послушать» синтезирован и только условно похож на мридангу.</p>
+    <p class="muted">Названия ударов и подсказки для рук. Нажмите «Послушать», чтобы услышать синтезированный звук.</p>
     <div class="grid">${C.strokes.map((s) => strokeCard(s)).join('')}</div>`;
   bindHearButtons(app);
 }
@@ -716,20 +667,14 @@ function viewEditor() {
 }
 
 function viewAbout() {
-  const legend = Object.entries(C.config.statuses).map(([k]) => `<li>${chip(k)}</li>`).join('');
-  app.innerHTML = `<h1>О прототипе</h1>
-    <p>«Мриданга» — <b>учебный прототип</b> для знакомства и пробных занятий. Содержание ещё не проверено преподавателем.</p>
-    <h2>Уровни уверенности</h2><ul class="sources">${legend}</ul>
-    <p class="small">Уверенность указывается <b>по слоям</b>: слоги, длительности и доли, выбор удара для слога, руки и мембраны.
-    «Подтверждено видео» у слогов не означает, что подтверждены ритм или техника — это видно в блоке над записью каждого упражнения.</p>
-    <h2>Чего здесь нет</h2>
-    <ul>
-      <li><b>Распознавания игры ученика нет.</b> Приложение не слушает микрофон и не смотрит в камеру. Оценка точности и техники вашей игры пока не реализована.</li>
-      <li>Звук «эталона» синтезирован и лишь условно похож на мридангу. Настоящий эталон — фрагмент видео преподавателя.</li>
-      <li>Караталы в программу не включены.</li>
-    </ul>
-    <h2>Источник</h2>
-    <p class="small">Видеокурс «Mridanga Lessons» (заставка «scsmath presents», ведущий — Sadhu Priya das, по титрам). Видео на этом сайте не размещены. Обозначения источников и таймкоды сохранены для сверки с преподавателем.</p>`;
+  app.innerHTML = `<h1>О приложении</h1>
+    <p>«Мриданга» помогает разучивать ритмические мантры: следуйте ленте ударов, выбирайте темп и занимайтесь с метрономом.</p>
+    <h2>Как заниматься</h2>
+    <p>Начните медленно. На ленте видны текущий и следующие удары. Нажмите «Паузу», чтобы разобрать нужное место, и «Продолжить», чтобы вернуться к игре. «Стоп» начинает упражнение заново.</p>
+    <p>Звук ударов синтезирован. В упражнениях используется равномерный учебный пульс для разучивания последовательности слогов.</p>
+    <p>Повторения отмечайте самостоятельно. Счётчики учитывают воспроизведение упражнения. Прогресс сохраняется в этом браузере.</p>
+    <h2>Материалы курса</h2>
+    <p>Основа программы — видеокурс «Mridanga Lessons», scsmath, Sadhu Priya das.</p>`;
 }
 
 // Диагностика звука для проверки на телефонах: пробный щелчок, звуки ударов по
@@ -772,7 +717,7 @@ function viewSound() {
       <h2>1. Пробный щелчок</h2>
       <div class="row"><button type="button" id="d-click">Один щелчок</button></div>
       <h2>2. Звуки ударов по одному</h2>
-      <div class="diag-sounds">${C.strokes.map((st) => `<button type="button" data-diag-stroke="${esc(st.id)}" title="${esc(st.id)}">${esc(st.label)} <span class="small muted">${esc(st.id)}</span></button>`).join('')}</div>
+      <div class="diag-sounds">${C.strokes.map((st) => `<button type="button" data-diag-stroke="${esc(st.id)}" >${esc(st.label)}</button>`).join('')}</div>
       <h2>3. Метроном</h2>
       <div class="row">
         <label>Темп <select id="d-metro-rate"><option>40</option><option selected>60</option><option>120</option><option>180</option></select> щелчков/мин</label>
@@ -785,11 +730,11 @@ function viewSound() {
         <button type="button" id="d-ex-play">Играть с метрономом</button>
       </div>
       <div class="lane" id="d-lane"></div>
-      <h2>Сведения для бланка</h2>
+      <details><summary>Сведения о звуке</summary>
       <pre class="diag-info" id="d-info"></pre>
       <div class="row"><button type="button" id="d-copy">Скопировать</button> <span class="small muted" id="d-copy-st"></span></div>
       <p class="small muted">Задержки baseLatency и outputLatency — то, что сообщает браузер. Это не измерение задержки динамика или Bluetooth;
-      без отдельного измерения с калибровкой абсолютная задержка неизвестна.</p>
+      без отдельного измерения с калибровкой абсолютная задержка неизвестна.</p></details>
     </div>`;
   const $ = (q) => app.querySelector(q);
   const flash = $('#d-flash');
@@ -849,7 +794,7 @@ function viewSound() {
   $('#d-click').addEventListener('click', () => startPlan('один щелчок', createPlan(restTimeline(60), { maxCycles: 1 }), { metronomeId: 'every1' }));
   app.querySelectorAll('[data-diag-stroke]').forEach((b) => b.addEventListener('click', () => {
     const r = parsePattern(b.dataset.diagStroke, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
-    startPlan(`удар ${b.dataset.diagStroke}`, createPlan(buildCycleTimeline(r.beats, 60), { maxCycles: 1 }), { playStrokes: true });
+    startPlan(`удар ${strokeMap.get(b.dataset.diagStroke).label}`, createPlan(buildCycleTimeline(r.beats, 60), { maxCycles: 1 }), { playStrokes: true });
   }));
   $('#d-metro').addEventListener('click', () => {
     const bpm = Number($('#d-metro-rate').value);
@@ -860,7 +805,7 @@ function viewSound() {
     const parsed = parsePattern(e.pattern, { strokes: C.strokes, subdivision: e.subdivision, symbols: C.config.symbols });
     const tech = techniqueReliability(e, l, parsed.slots, strokeMap);
     const ctx = { strokeMap, lanes: C.config.lanes, notes: e.techniqueNotes ?? [], tech: new Map(tech.items.map((i) => [techKey(i), i])) };
-    const cues = parsed.slots.map((slot, i) => eventCue({ ...slot, slotIndex: i }, ctx));
+    const cues = parsed.slots.map((slot, i) => practiceCue({ ...slot, slotIndex: i }, ctx));
     const rateV = Number($('#d-ex-rate').value);
     const plan = createPlan(buildCycleTimeline(parsed.beats, beatBpmFromStrokeRate(rateV, e.subdivision)), { rate: rateV });
     startPlan(`${e.title} с метрономом, ${rateV}`, plan, {

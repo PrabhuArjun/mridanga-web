@@ -57,8 +57,8 @@ export function handTitle(hand, lane) {
   const side = lane === 'left' ? 'левая рука' : lane === 'right' ? 'правая рука' : 'рука не определена';
   const shape = hand?.shape ?? 'unknown';
   if (shape === 'fingers') return `${side}: ${hand.fingers.map((f) => NAMES[f]).join(', ')}`;
-  if (shape === 'count') return `${side}: ${hand.count} пальц., какие — не названо`;
+  if (shape === 'count') return `${side}: ${hand.count} пальц.`;
   if (shape === 'slap') return `${side}: шлепок пальцами и ладонью`;
   if (shape === 'heel') return `${side}: основание ладони, пальцы отскакивают`;
-  return `${side}: приём уточняется`;
+  return `${side}`;
 }

@@ -4,18 +4,11 @@
 // Что показывать, решает план воспроизведения (audio/transport.js): лента не
 // ведёт своего времени — ей передают позицию, вычисленную по часам звука.
 import { cueWindow, eventBySeq } from '../audio/transport.js';
-import { handSvg } from './hand.js';
+import { handSvg } from './hand.js?v=0.2.3';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// Короткие метки помещаются в узкую карточку; полный текст — во всплывающей подсказке.
-const STATUS_MARK = {
-  probable: ['≈ предп.', 'предположительно: приём взят из другого места курса или выведен'],
-  teacher: ['? проверить', 'требует проверки преподавателем'],
-  unknown: ['? уточняется', 'техника уточняется: в видео не объяснена'],
-  note: ['≈ записка', 'из рукописной записки, не из видео'],
-};
-const LANE_SHORT = { right: 'П · малая', left: 'Л · большая', unknown: 'рука ?' };
+const LANE_SHORT = { right: 'П · малая', left: 'Л · большая', unknown: '' };
 
 /**
  * Геометрия движущейся ленты: ширина карточки и место отметки так, чтобы
@@ -39,7 +32,7 @@ export function laneGeometry(width, { gap = 6, min = 62, max = 128 } = {}) {
 /** HTML одной карточки. state: past | now | next | end | start */
 export function cueCardHtml(cue, state, { compact = false } = {}) {
   const stateText = { past: 'звучал по записи', now: 'сейчас', next: 'далее', end: '', start: '' }[state];
-  if (state === 'end') return `<div class="cue cue-end" data-state="end"><div class="cue-syl">■</div><div class="cue-hint">конец прогона</div></div>`;
+  if (state === 'end') return `<div class="cue cue-end" data-state="end"><div class="cue-syl">■</div><div class="cue-hint">конец упражнения</div></div>`;
   if (state === 'start') return `<div class="cue cue-start" data-state="start"><div class="cue-syl">▶</div><div class="cue-hint">старт по кнопке</div></div>`;
   if (!cue) return '<div class="cue cue-empty"></div>';
   // Акцент заменяет слово состояния: где «сейчас», видно по отметке/колонке, а две
@@ -50,23 +43,21 @@ export function cueCardHtml(cue, state, { compact = false } = {}) {
   if (cue.kind === 'rest') {
     return `<div class="cue cue-rest" data-state="${state}" data-kind="rest">${head}<div class="cue-syl">—</div><div class="cue-hint">пауза</div></div>`;
   }
-  const tentative = cue.status !== 'confirmed';
+  const tentative = false;
   // Одновременный удар: две схемы рядом — меньше и с короткой подписью руки, чтобы влезть в узкую карточку.
   const size = cue.together ? 24 : compact ? 30 : 36;
   const laneText = (p) => (cue.together ? (LANE_SHORT[p.lane] ?? p.lane).split(' · ')[0] : (LANE_SHORT[p.lane] ?? p.lane));
-  const hands = cue.parts.map((p) => `<span class="cue-part">${handSvg(p.hand, { lane: p.lane, tentative: tentative || p.hand.status !== 'confirmed', size })}<span class="cue-lane">${esc(laneText(p))}${p.laneStatus === 'probable' ? '≈' : ''}</span></span>`).join(cue.together ? '<span class="cue-plus" aria-label="одновременно">+</span>' : '');
+  const hands = cue.parts.map((p) => `<span class="cue-part">${handSvg(p.hand, { lane: p.lane, tentative: tentative || p.hand.status !== 'confirmed', size })}<span class="cue-lane">${esc(laneText(p))}</span></span>`).join(cue.together ? '<span class="cue-plus" aria-label="одновременно">+</span>' : '');
   // На карточке — краткая подпись (hand.short), сохраняющая приём и порядок движений;
   // полная — в словаре «Удары» и во всплывающей подсказке карточки.
   const handsOf = cue.combos.length ? cue.combos.map((c) => c.hand ?? { hint: c.label }) : cue.parts.map((p) => p.hand);
   const hint = handsOf.map((h) => h.short ?? h.hint).join('; ');
   const full = handsOf.map((h) => h.hint).join('; ');
-  const mark = STATUS_MARK[cue.status];
   return `<div class="cue${tentative ? ' tentative' : ''}" data-state="${state}" data-kind="stroke"${cue.together ? ' data-together="1"' : ''}${cue.accent ? ' data-accent="1"' : ''} title="${esc(`${cue.label}: ${full}`)}">
     ${head}
     <div class="cue-syl">${esc(cue.label)}</div>
     <div class="cue-hands">${hands}</div>
     <div class="cue-hint">${esc(hint)}</div>
-    ${mark ? `<div class="cue-mark" data-status="${esc(cue.status)}" title="${esc(mark[1])}">${esc(mark[0])}</div>` : ''}
   </div>`;
 }
 

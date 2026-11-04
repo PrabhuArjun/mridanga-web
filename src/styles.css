@@ -256,3 +256,14 @@ th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--
 .diag-info { font-family: ui-monospace, Menlo, monospace; font-size: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); padding: .5rem; border-radius: 8px; }
 .diag-sounds { display: flex; flex-wrap: wrap; gap: .35rem; }
 .start-fail { display: block; margin-top: .25rem; }
+
+/* The three transport actions stay together, including on a narrow phone. */
+.transport { display: flex; flex-wrap: wrap; gap: .4rem; }
+.transport button { min-height: 44px; padding: .45rem .65rem; }
+button:disabled { opacity: .45; cursor: default; }
+.playback-state { color: var(--muted); }
+@media (max-width: 540px) {
+  .transport { flex: 1 0 100%; flex-wrap: nowrap; }
+  .transport button { flex: 1; font-size: .88rem; padding-inline: .3rem; }
+  .playback-state { flex: 1 0 100%; }
+}

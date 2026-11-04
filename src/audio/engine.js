@@ -76,6 +76,8 @@ export class Player {
     this.gen = 0;
     this.pending = false;
     this.lastError = null;
+    this.pausedAt = null;
+    this.pendingSteps = new Map();
   }
 
   /** Звук запланирован или идёт. Ожидание resume() сюда не входит — см. starting. */
@@ -84,9 +86,11 @@ export class Player {
   /** Запуск ждёт разрешения браузера на звук (ctx.resume()). */
   get starting() { return this.pending; }
 
+  get paused() { return this.pausedAt !== null; }
+
   /** Время плана по часам звука (секунды от начала прогона); null — не играет. */
   now() {
-    return this.plan && this.ctx ? this.ctx.currentTime - this.t0 : null;
+    return this.paused ? this.pausedAt : this.plan && this.ctx ? this.ctx.currentTime - this.t0 : null;
   }
 
   /** Громкость 0…1; применяется сразу, в том числе к уже идущему прогону. */
@@ -121,7 +125,17 @@ export class Player {
    */
   async start(p) {
     this.stop();
-    const gen = this.gen;
+    return this.activate(p, this.gen);
+  }
+
+  /** Continue the same plan, counters and tempo segments after a user pause. */
+  async resume() {
+    if (!this.paused || this.pending) return 'cancelled';
+    return this.activate(this.params, ++this.gen, true);
+  }
+
+  async activate(p, gen, resuming = false) {
+    this.pending = true;
     this.lastError = null;
     try {
       // Request the media category during the Play gesture, before Web Audio starts.
@@ -151,10 +165,13 @@ export class Player {
     out.gain.value = this.volume;
     out.connect(ctx.destination);
     this.out = out;
-    this.plan = p.plan;
+    if (!resuming) this.plan = p.plan;
     this.params = p;
-    this.t0 = ctx.currentTime + 0.1;
-    this.scheduledTo = 0;
+    this.t0 = resuming ? ctx.currentTime - this.pausedAt : ctx.currentTime + 0.1;
+    // Events at/before the pause have already sounded. Cancelled look-ahead
+    // events after it must be scheduled again, with the remaining gap intact.
+    this.scheduledTo = resuming ? Math.max(0, this.pausedAt + 1e-7) : 0;
+    this.pausedAt = null;
     this.timer = setInterval(() => this.tick(), TICK_MS);
     this.tick();
     return 'started';
@@ -174,12 +191,21 @@ export class Player {
         for (const id of ev.strokes) playStroke(ctx, out, at, p.strokeSounds.get(id), ev.accent);
       }
       const delayMs = Math.max(0, (at - ctx.currentTime) * 1000);
-      this.visualTimers.push(setTimeout(() => p.onStep?.(ev), delayMs));
+      const gen = this.gen;
+      const timer = setTimeout(() => {
+        this.pendingSteps.delete(ev.seq);
+        if (gen === this.gen && !this.paused) p.onStep?.(ev);
+      }, delayMs);
+      this.pendingSteps.set(ev.seq, { ev, timer });
     }
     this.scheduledTo = until;
     if (this.scheduledTo >= total) {
       const endMs = Math.max(0, (this.t0 + total - ctx.currentTime) * 1000);
-      this.visualTimers.push(setTimeout(() => { this.stop(); p.onEnd?.(); }, endMs));
+      const gen = this.gen;
+      this.visualTimers.push(setTimeout(() => {
+        if (gen !== this.gen || this.paused) return;
+        this.stop(); p.onEnd?.();
+      }, endMs));
       clearInterval(this.timer);
       this.timer = 0; // «идёт», пока не сработает финальный таймер
     }
@@ -190,26 +216,58 @@ export class Player {
    * @returns {{cycle: number, at: number} | null} null — не играет или граница за концом прогона
    */
   retime(timeline, rate) {
-    if (!this.timer || !this.plan) return null;
-    const r = retimePlan(this.plan, this.scheduledTo, timeline, rate);
+    if ((!this.playing && !this.paused) || !this.plan) return null;
+    const r = retimePlan(this.plan, this.paused ? Math.max(0, this.pausedAt + 1e-7) : this.scheduledTo, timeline, rate);
     if (!r) return null;
     this.plan = r.plan;
     return { cycle: r.cycle, at: r.at };
   }
 
-  /** Остановить звук и отменить запуск, ожидающий ctx.resume(). Повторный вызов безопасен. */
-  stop() {
+  /** Freeze between attacks without suspending the iPhone audio session. */
+  pause() {
+    if (!this.playing || this.pending) return false;
+    const at = this.now();
+    // A busy UI can delay visual callbacks even though their audio has sounded.
+    // Account for those once before cancelling the remaining look-ahead window.
+    for (const { ev, timer } of this.pendingSteps.values()) {
+      if (ev.at <= at) {
+        clearTimeout(timer);
+        this.pendingSteps.delete(ev.seq);
+        this.params.onStep?.(ev);
+      }
+    }
+    if (at >= planEnd(this.plan)) {
+      const onEnd = this.params.onEnd;
+      this.stop(); onEnd?.();
+      return false;
+    }
+    this.pausedAt = at;
     this.gen += 1;
-    this.pending = false;
+    this.clearPlayback();
+    return true;
+  }
+
+  clearPlayback() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.visualTimers.forEach(clearTimeout);
     this.visualTimers = [];
-    this.plan = null;
+    this.pendingSteps.forEach(({ timer }) => clearTimeout(timer));
+    this.pendingSteps.clear();
     if (this.out) {
       // Обрываем уже запланированные звуки, иначе после «Стоп» доигрывается окно.
       try { this.out.disconnect(); } catch { /* уже отключён */ }
       this.out = null;
     }
+  }
+
+  /** Stop also discards the saved pause position and cancels pending resume. */
+  stop() {
+    this.gen += 1;
+    this.pending = false;
+    this.clearPlayback();
+    this.plan = null;
+    this.params = null;
+    this.pausedAt = null;
   }
 }
