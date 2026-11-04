@@ -1,5 +1,6 @@
-// Приложение: загрузка контента, маршруты (#/…), страницы. Без сборки и
-// внешних библиотек: ES-модули прямо в браузере.
+// Приложение: загрузка контента, оболочка (верхняя и нижняя панели), маршруты
+// (#/…) и экраны-карточки. Без сборки и внешних библиотек: ES-модули прямо в браузере.
+// Каждый раздел — один экран; длинное — листается страницами, а не прокручивается.
 import {
   parsePattern, buildCycleTimeline, countStrokes, tempoLadder, slotLabel, beatBpmFromStrokeRate,
 } from './model/notation.js';
@@ -8,21 +9,33 @@ import {
   normalizeProgress, recordRun, markRep, toggleLadderStep, setLessonDone, lessonSummary,
   exerciseProgress, emptyProgress,
 } from './model/progress.js';
-import { Player } from './audio/engine.js?v=0.2.3';
-import { createPlan, positionAtTime } from './audio/transport.js';
-import { createLane } from './ui/lane.js?v=0.2.3';
-import { createMotion } from './ui/motion.js';
-import { handSvg } from './ui/hand.js?v=0.2.3';
+import { Player } from './audio/engine.js?v=0.3.0';
+import { createPlan, eventBySeq } from './audio/transport.js';
+import { createLane } from './ui/lane.js?v=0.3.0';
+import { handSvg, drumSvg, timbreSvg } from './ui/hand.js?v=0.3.0';
 import { eventCue, techKey } from './model/cue.js';
 import { METRONOME_MODES } from './audio/scheduler.js';
-import { renderStaff, glyphSvg } from './ui/staff.js';
+import { renderStaff } from './ui/staff.js';
 import { followScrollLeft } from './ui/follow.js';
 import { createPracticeRun } from './model/practice-run.js';
 import { techniqueReliability } from './model/reliability.js';
+import {
+  spell, spellLesson, lessonTab, moduleTab, slotTimbre, strokeTimbre, timbreInfo, trustedHand, laneWords, paginate,
+} from './model/display.js?v=0.3.0';
+import { SECTIONS, parseRoute, href, sectionOf, breadcrumb, backHref } from './model/nav.js?v=0.3.0';
+import { normalizeNarration, narrationFor } from './model/narration.js?v=0.3.0';
+import { createNarrator } from './ui/narrator.js?v=0.3.0';
+import { stageHtml } from './ui/stage.js?v=0.3.0';
+import { openTempoPicker, showDialog, clampTempo, tempoLabel } from './ui/tempo.js?v=0.3.0';
+import {
+  esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
+} from './ui/widgets.js?v=0.3.0';
 
-const APP_VERSION = '0.2.3';
-const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', view: 'mridanga.view.v1' };
+const APP_VERSION = '0.3.0';
+const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
+const topBar = document.getElementById('top');
+const bottomBar = document.getElementById('bottom');
 const player = new Player();
 
 // Хранилище браузера может быть недоступно (приватный режим) — тогда всё
@@ -38,9 +51,17 @@ let C = null;      // действующий контент (с правками
 let strokeMap = new Map();
 let progress = normalizeProgress(store.get(KEYS.progress));
 let overrideNotice = '';
+let narration = new Map(); // озвучка из content/narration.json (может не быть)
+// Последний выбор ученика: урок практики, шаг теории, удар, урок прогресса.
+// Читается с проверкой по контенту — устаревший id молча заменяется первым.
+let last = store.get(KEYS.last);
+if (!last || typeof last !== 'object') last = {};
 // Идущая практика (одна на страницу): end() записывает полные циклы и
 // останавливает звук, checkpoint() записывает их, не останавливая.
 let practice = null;
+
+const PLAYER_VOLUME = 0.8;
+let practiceVolume = PLAYER_VOLUME;
 
 function endPractice() {
   practice?.end();
@@ -48,7 +69,18 @@ function endPractice() {
   player.stop();
 }
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// Озвучка и звук упражнения не звучат одновременно: перед голосом практика
+// останавливается (с записью полных циклов), перед практикой — голос.
+let narrationUi = null;
+const narrator = createNarrator({
+  beforePlay: () => endPractice(),
+  onChange: (state) => narrationUi?.(state),
+});
+
+function saveLast(patch) {
+  last = { ...last, ...patch };
+  store.set(KEYS.last, last);
+}
 
 async function loadJson(path) {
   const r = await fetch(path, { cache: 'no-cache' });
@@ -56,12 +88,21 @@ async function loadJson(path) {
   return r.json();
 }
 
+/** Необязательный файл: нет его или он испорчен — null, приложение работает без него. */
+async function loadOptionalJson(path) {
+  try {
+    const r = await fetch(path, { cache: 'no-cache' });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
 async function loadContent() {
-  const [config, strokesDoc, lessonsDoc, media] = await Promise.all([
+  const [config, strokesDoc, lessonsDoc, media, narr] = await Promise.all([
     loadJson('content/notation-config.json'), loadJson('content/strokes.json'),
-    loadJson('content/lessons.json'), loadJson('content/media.json'),
+    loadJson('content/lessons.json'), loadJson('content/media.json'), loadOptionalJson('content/narration.json'),
   ]);
   base = { config, strokes: strokesDoc.strokes, modules: lessonsDoc.modules, defaults: lessonsDoc.defaults, media };
+  narration = normalizeNarration(narr);
   applyOverrides();
 }
 
@@ -77,13 +118,13 @@ function applyOverrides() {
     C = next;
   }
   C = { ...C, modules: C.modules.map((m) => ({ ...m,
-    title: m.id === 'm5' ? 'Упражнение с метрономом' : m.title,
-    lessons: m.lessons.map((l) => l.id === 'care'
+    title: spell(m.id === 'm5' ? 'Упражнение с метрономом' : m.title),
+    lessons: m.lessons.map((l) => spellLesson(l.id === 'care'
       ? { ...l, title: 'Настройка и уход', summary: 'Настройка инструмента и комфорт во время игры.',
           steps: ['Для изменения натяжения мембран обратитесь к мастеру.', 'Следите за свободой движений и комфортом рук.'] }
       : l.id === 'note-kenana'
         ? { ...l, summary: 'Восемь слогов с басовыми акцентами на первом, четвёртом и седьмом ударах. Группировка: 3 + 3 + 2.' }
-        : l),
+        : l)),
   })) };
   strokeMap = new Map(C.strokes.map((s) => [s.id, s]));
 }
@@ -93,41 +134,60 @@ function saveProgress(p) {
   store.set(KEYS.progress, p);
 }
 
-// ---------- общие элементы ----------
-
-function feelChip(feelId) {
-  const f = C.config.feels?.find((x) => x.id === feelId);
-  return f?.status === 'confirmed' ? `<span class="chip feel">${esc(f.label)}</span>` : '';
-}
+// ---------- контент: поиск и общие элементы ----------
 
 function allLessons() {
   return C.modules.flatMap((m) => m.lessons.map((l) => ({ ...l, module: m })));
 }
+const practiceLessons = () => allLessons().filter((l) => l.exercises.length);
+const findLesson = (id, list = allLessons()) => list.find((l) => l.id === id) ?? null;
 
-function glyphIcon(stroke) {
-  const parts = stroke.combination?.length ? stroke.combination.map((id) => strokeMap.get(id)) : [stroke];
-  const inner = parts.map((s, i) => glyphSvg(s?.glyph, 26 + (parts.length > 1 ? (i ? 10 : -10) : 0), 26)).join('');
-  return `<svg class="staff" viewBox="0 0 52 52" aria-hidden="true"><defs><pattern id="hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect class="hatch-bg" width="5" height="5"/><line class="hatch-line" x1="0" y1="0" x2="0" y2="5"/></pattern></defs>${inner}</svg>`;
+function feelChip(feelId) {
+  const f = C.config.feels?.find((x) => x.id === feelId);
+  return f?.status === 'confirmed' ? `<span class="chip">${esc(f.label)}</span>` : '';
 }
 
-function laneLabel(id) {
-  if (id === 'both') return 'Обе руки одновременно';
-  return C.config.lanes.find((l) => l.id === id)?.label ?? id;
+const parse = (ex) => parsePattern(ex.pattern, { strokes: C.strokes, subdivision: ex.subdivision, symbols: C.config.symbols });
+
+/** Слоги упражнения крупными плашками по долям; длинное — первые max и «+N». */
+function seqChips(ex, max = 12) {
+  const r = parse(ex);
+  if (r.errors.length) return '';
+  let shown = 0;
+  const beats = [];
+  for (const beat of r.beats) {
+    if (shown >= max) break;
+    const chips = [];
+    for (const slot of beat) {
+      if (shown >= max) break;
+      chips.push(`<span class="syl-chip${slot.accent ? ' acc' : ''}${slot.rest ? ' rest' : ''}">${esc(slotLabel(slot, strokeMap, '—'))}</span>`);
+      shown += 1;
+    }
+    beats.push(`<span class="syl-beat">${chips.join('')}</span>`);
+  }
+  const more = r.slots.length - shown;
+  return `<div class="seq" role="img" aria-label="Слоги: ${esc(r.slots.map((s) => slotLabel(s, strokeMap, 'пауза')).join(' '))}">${beats.join('')}${more > 0 ? `<span class="syl-more">+${more}</span>` : ''}</div>`;
 }
 
-function strokeCard(s) {
-  const described = s.status === 'confirmed' && !s.conflict;
-  const hand = described && s.hand?.status === 'confirmed' && s.hand.shape !== 'unknown' ? s.hand : null;
-  return `<article class="card stroke-card">
-    ${glyphIcon(s)}
-    <div>
-      <div class="label">${esc(s.label)}</div>
-      ${described ? `<div class="small muted">${esc(laneLabel(s.lane))}</div><p class="small">${esc(s.technique)}</p>` : ''}
-      ${hand ? `<div class="hand-hint small">${handSvg(hand, { lane: s.lane === 'left' ? 'left' : 'right', size: 32 })}
-        <span>${esc(hand.hint)}</span></div>` : ''}
-      <div class="meta"><button type="button" data-hear="${esc(s.id)}" title="Синтезированный звук">Послушать</button></div>
-    </div>
-  </article>`;
+/** Крупная фигура удара: слог, схема кисти (только подтверждённая) или общий значок, тембр. */
+function strokeFigure(s, { size = 96 } = {}) {
+  if (!s) return '';
+  const combo = Boolean(s.combination?.length);
+  const parts = combo ? s.combination.map((id) => strokeMap.get(id)) : [s];
+  // Составной удар: сам подтверждён, без расхождений, и приём каждой руки подтверждён.
+  const ok = combo
+    ? s.status === 'confirmed' && !s.conflict && s.hand?.status === 'confirmed' && parts.every((p) => trustedHand(p))
+    : Boolean(trustedHand(s));
+  const visual = ok
+    ? parts.map((p) => handSvg(trustedHand(p), { lane: p.lane, size: combo ? Math.round(size * 0.7) : size }))
+      .join(combo ? '<span class="sc-plus" aria-label="одновременно">+</span>' : '')
+    : drumSvg({ size: Math.round(size * 1.1) });
+  const t = timbreInfo(strokeTimbre(s, strokeMap));
+  return `<figure class="fig">
+    <div class="fig-syl">${esc(s.label)}</div>
+    <div class="fig-visual">${visual}</div>
+    <figcaption><span class="sc-timbre" data-timbre="${t.id}">${timbreSvg(t.id, 20)}<span>${esc(t.word)}</span></span>${laneWords(s.lane).long ? ` <span class="muted">${esc(laneWords(s.lane).long)}</span>` : ''}</figcaption>
+  </figure>`;
 }
 
 // A student should never be taught a disputed finger assignment as established.
@@ -136,39 +196,11 @@ function practiceCue(slot, ctx) {
   const cue = eventCue(slot, ctx);
   if (cue.kind !== 'stroke') return cue;
   const disputed = cue.notes.some((n) => n.status !== 'confirmed');
-  const parts = cue.parts.filter((p) => !disputed && p.hand.status === 'confirmed' &&
+  const parts = cue.parts.filter((p) => !disputed && p.hand.status === 'confirmed' && p.hand.shape !== 'unknown' &&
     strokeMap.get(p.strokeId)?.status === 'confirmed' && !strokeMap.get(p.strokeId)?.conflict);
-  const complete = parts.length === cue.parts.length;
-  return { ...cue, parts: complete ? parts : [],
-    combos: complete ? cue.combos.filter((c) => c.hand?.status === 'confirmed') : [],
-  };
-}
-
-function bindHearButtons(root) {
-  root.querySelectorAll('[data-hear]').forEach((b) => b.addEventListener('click', () => {
-    endPractice();
-    const r = parsePattern(b.dataset.hear, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
-    player.start({
-      plan: createPlan(buildCycleTimeline(r.beats, 60), { maxCycles: 1 }), strokeSounds: soundMap(), metronomeId: 'off',
-      playStrokes: true,
-    }).then((st) => showStartFailure(b, st));
-  }));
-}
-
-/** Отказ браузера включить звук — видимая строка рядом с кнопкой, а не тишина. */
-function showStartFailure(anchor, status) {
-  const old = anchor.parentElement?.querySelector('.start-fail');
-  old?.remove();
-  if (status !== 'failed') return;
-  const m = document.createElement('span');
-  m.className = 'small warn start-fail';
-  m.setAttribute('role', 'status');
-  m.textContent = startFailureText();
-  anchor.after(m);
-}
-
-function startFailureText() {
-  return 'Браузер не включил звук. Нажмите ещё раз; на телефоне проверьте беззвучный режим.';
+  const complete = parts.length === cue.parts.length &&
+    cue.combos.every((c) => !strokeMap.get(c.strokeId)?.conflict && c.hand?.status === 'confirmed');
+  return { ...cue, parts: complete ? parts : [], combos: complete ? cue.combos : [] };
 }
 
 function soundMap() {
@@ -176,73 +208,220 @@ function soundMap() {
   return new Map(C.strokes.map((s) => [s.id, s.sound]));
 }
 
-// ---------- страницы ----------
-
-function viewCatalog() {
-  const intro = `<h1>Уроки</h1>
-    <p class="muted">Выберите урок, начните в медленном темпе и следуйте подсказкам ленты.</p>
-    ${overrideNotice ? `<p class="warn small">${esc(overrideNotice)}</p>` : ''}`;
-  const mods = C.modules.map((m) => `<section>
-      <h2>${esc(m.title)}</h2>
-      <div class="grid">${m.lessons.map((l) => {
-        const sm = lessonSummary(progress, l);
-        const prog = l.exercises.length
-          ? `<span class="chip plain">отработано ${sm.practiced}/${sm.total}</span>` : '';
-        return `<a class="card" href="#/lesson/${encodeURIComponent(l.id)}">
-          <h3>${esc(l.title)}${sm.done ? ' ✓' : ''}</h3>
-          <div class="small muted">${esc(l.summary)}</div>
-          <div class="meta">${feelChip(l.feel)}${prog}</div>
-        </a>`;
-      }).join('')}</div></section>`).join('');
-  app.innerHTML = intro + mods;
+function startFailureText() {
+  return 'Браузер не включил звук. Нажмите ещё раз; на телефоне проверьте беззвучный режим.';
 }
 
-function viewLesson(lessonId, exId) {
-  const lesson = allLessons().find((l) => l.id === lessonId);
-  if (!lesson) {
-    app.innerHTML = '<h1>Урок не найден</h1><p><a href="#/">К списку уроков</a></p>';
+/** Синтезированный звук одного удара по кнопке «Послушать». */
+function hearStroke(id, statusEl) {
+  narrator.stop();
+  endPractice();
+  const r = parsePattern(id, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
+  player.start({
+    plan: createPlan(buildCycleTimeline(r.beats, 60), { maxCycles: 1 }), strokeSounds: soundMap(), metronomeId: 'off', playStrokes: true,
+  }).then((st) => { if (statusEl) statusEl.textContent = st === 'failed' ? startFailureText() : ''; });
+}
+
+// ---------- озвучка ----------
+
+/** Кнопки озвучки — только если в манифесте есть запись. Иначе пусто: без нерабочей кнопки. */
+function narrationHtml(track) {
+  if (!track) return '';
+  return `<div class="narr" data-narr>
+    <button type="button" data-n="play">${icon('sound', 22)}<span>Слушать</span></button>
+    <button type="button" data-n="pause" hidden>Ⅱ Пауза</button>
+    <button type="button" data-n="stop" hidden>■ Стоп</button>
+    <span class="narr-st small" role="status"></span>
+  </div>`;
+}
+
+function bindNarration(root, track) {
+  const box = root.querySelector('[data-narr]');
+  if (!box || !track) { narrationUi = null; return; }
+  const b = (n) => box.querySelector(`[data-n="${n}"]`);
+  const st = box.querySelector('.narr-st');
+  const render = (state) => {
+    const mine = narrator.track?.src === track.src;
+    const s = mine ? state : 'idle';
+    b('play').hidden = s === 'playing' || s === 'failed';
+    b('play').disabled = s === 'loading';
+    b('play').querySelector('span').textContent = s === 'paused' ? 'Продолжить' : s === 'loading' ? 'Загрузка…' : 'Слушать';
+    b('pause').hidden = s !== 'playing';
+    b('stop').hidden = !(s === 'playing' || s === 'paused');
+    st.textContent = s === 'failed' ? 'Запись сейчас недоступна — текст на карточке.' : '';
+  };
+  b('play').addEventListener('click', () => narrator.play(track));
+  b('pause').addEventListener('click', () => narrator.pause());
+  b('stop').addEventListener('click', () => narrator.stop());
+  narrationUi = (state) => { if (box.isConnected) render(state); };
+  render(narrator.state);
+}
+
+// ---------- оболочка: верхняя и нижняя панели ----------
+
+function navButtons(back) {
+  return `<a class="btn nav-btn" href="${esc(back)}">${icon('back', 22)}<span>Вернуться назад</span></a>
+    <a class="btn nav-btn" href="#/">${icon('home', 22)}<span>Главное меню</span></a>`;
+}
+
+/** Верхняя и нижняя панели страницы. На главном меню панелей нет — меню и есть навигация. */
+function setChrome(r, names = {}) {
+  document.body.dataset.page = r.page;
+  if (r.page === 'home') {
+    topBar.innerHTML = '';
+    bottomBar.innerHTML = '';
+    topBar.hidden = true;
+    bottomBar.hidden = true;
     return;
   }
-  const ex = lesson.exercises.find((e) => e.id === exId) ?? lesson.exercises[0];
-  const usedIds = new Set();
-  for (const e of lesson.exercises) {
-    const r = parsePattern(e.pattern, { strokes: C.strokes, subdivision: e.subdivision, symbols: C.config.symbols });
-    r.slots.forEach((s) => s.strokes.forEach((id) => usedIds.add(id)));
+  topBar.hidden = false;
+  bottomBar.hidden = false;
+  const trail = breadcrumb(r, names);
+  const back = backHref(trail);
+  topBar.innerHTML = `<div class="bar-row">${navButtons(back)}</div>
+    <nav class="crumbs" aria-label="Путь"><ol>${trail.map((t, i) => {
+      const lastOne = i === trail.length - 1;
+      return `<li>${t.href && !lastOne ? `<a href="${esc(t.href)}">${esc(t.title)}</a>` : `<span${lastOne ? ' aria-current="page"' : ''}>${esc(t.title)}</span>`}</li>`;
+    }).join('')}</ol></nav>`;
+  const cur = sectionOf(r.page);
+  bottomBar.innerHTML = `<div class="bar-row">${navButtons(back)}</div>
+    <nav class="tabbar" aria-label="Разделы">${SECTIONS.map((s) =>
+      `<a href="${href(s.id)}"${s.id === cur ? ' aria-current="page"' : ''}>${icon(s.icon, 22)}<span>${esc(s.short)}</span></a>`).join('')}</nav>`;
+}
+
+/** Экран-карточка раздела. */
+function screen(cls, inner) {
+  app.innerHTML = `<section class="screen ${cls}">${inner}</section>`;
+  return app.firstElementChild;
+}
+
+/**
+ * Вернуть фокус после перерисовки карточки: ['tab', полоса, id] — на вкладку,
+ * ['pager', ±1] — на ту же кнопку листалки (или на соседнюю, если эта стала недоступна).
+ */
+function restoreFocus(el, focus) {
+  if (!focus) return;
+  if (focus[0] === 'pager') {
+    const want = el.querySelector(`.pager [data-page="${focus[1]}"]`);
+    (want && !want.disabled ? want : el.querySelector(`.pager [data-page="${-focus[1]}"]`))?.focus();
+  } else focusTab(el, focus[0], focus[1]);
+}
+
+// ---------- главное меню ----------
+
+function viewHome() {
+  setChrome({ page: 'home' });
+  const lp = validPractice(last.practice);
+  const lt = validTheory(last.theory);
+  const resume = [
+    lp ? `<a class="btn resume" href="${href('lesson', lp.lesson.id, lp.ex.id)}">${icon('play', 20)}<span>Продолжить практику: <b>${esc(lessonTab(lp.lesson))}</b></span></a>` : '',
+    lt ? `<a class="btn resume" href="${href('theory', lt.lesson.id, lt.step + 1)}">${icon('book', 20)}<span>Теория: <b>${esc(lessonTab(lt.lesson))}</b>, шаг ${lt.step + 1}</span></a>` : '',
+  ].join('');
+  const el = screen('home', `
+    <header class="home-head"><h1>Мриданга</h1><p class="muted">Ритмические мантры шаг за шагом</p></header>
+    <nav class="tiles" aria-label="Главное меню">${SECTIONS.map((s) =>
+      `<a class="tile" href="${href(s.id)}">${icon(s.icon, 40)}<span>${esc(s.title)}</span></a>`).join('')}</nav>
+    ${resume ? `<div class="resume-row">${resume}</div>` : ''}
+    ${overrideNotice ? `<p class="note small">${esc(overrideNotice)}</p>` : ''}`);
+  return el;
+}
+
+// ---------- выбор упражнения ----------
+
+function validPractice(p) {
+  const lesson = findLesson(p?.lesson, practiceLessons());
+  if (!lesson) return null;
+  const ex = lesson.exercises.find((e) => e.id === p.ex) ?? lesson.exercises[0];
+  return { lesson, ex };
+}
+
+function validTheory(t) {
+  const lesson = findLesson(t?.lesson);
+  if (!lesson) return null;
+  const pages = theoryPages(lesson);
+  const step = Number.isInteger(t.step) && t.step >= 0 && t.step < pages.length ? t.step : 0;
+  return { lesson, step };
+}
+
+function viewPractice(r) {
+  const lessons = practiceLessons();
+  // «Вернуться назад» из тренировки ведёт на #/practice/<урок>: вариант — тот, что был выбран.
+  const exFromLast = !r.b && last.practice?.lesson === r.a ? last.practice.ex : r.b;
+  let sel = validPractice({ lesson: r.a, ex: exFromLast }) ?? validPractice(last.practice) ?? validPractice({ lesson: lessons[0].id });
+  const modules = C.modules.filter((m) => m.lessons.some((l) => l.exercises.length));
+
+  const render = (focus = null) => {
+    const { lesson, ex } = sel;
+    saveLast({ practice: { lesson: lesson.id, ex: ex.id } });
+    history.replaceState(null, '', href('practice', lesson.id, ex.id));
+    setChrome(r, { lessonTitle: lessonTab(lesson) });
+    const inModule = lesson.module.lessons.filter((l) => l.exercises.length);
+    const p = exerciseProgress(progress, ex.id);
+    const el = screen('pick', `
+      <h1 class="vh">Практика</h1>
+      ${stripHtml({ name: 'group', label: 'Группы мантр', size: 'sm', selected: lesson.module.id,
+        items: modules.map((m) => ({ id: m.id, label: moduleTab(m) })) })}
+      ${stripHtml({ name: 'lesson', label: 'Мантры', selected: lesson.id, controls: 'pick-panel',
+        items: inModule.map((l) => ({ id: l.id, label: lessonTab(l) })) })}
+      <div class="pick-panel card" id="pick-panel" role="tabpanel" aria-label="${esc(lessonTab(lesson))}">
+        <div class="pick-title"><h2>${esc(lessonTab(lesson))}</h2>${feelChip(lesson.feel)}</div>
+        ${lesson.exercises.length > 1 ? stripHtml({ name: 'ex', label: 'Вариант упражнения', size: 'sm', selected: ex.id,
+          items: lesson.exercises.map((e) => ({ id: e.id, label: e.title })) }) : `<p class="pick-ex">${esc(ex.title)}</p>`}
+        ${seqChips(ex, 8)}
+      </div>
+      <div class="pick-actions">
+        <a class="btn primary big" href="${href('lesson', lesson.id, ex.id)}">${icon('play', 24)}<span>Начать</span></a>
+        <a class="btn" href="${href('theory', lesson.id)}">${icon('book', 22)}<span>Теория</span></a>
+      </div>`);
+    bindStrip(el, 'group', (id, kb) => {
+      const m = modules.find((x) => x.id === id);
+      const first = m.lessons.find((l) => l.exercises.length);
+      const keep = validPractice(last.byModule?.[id]);
+      sel = keep && keep.lesson.module.id === id ? keep : validPractice({ lesson: first.id });
+      render(kb ? ['group', id] : null);
+    });
+    bindStrip(el, 'lesson', (id, kb) => {
+      sel = validPractice({ lesson: id });
+      saveLast({ byModule: { ...(last.byModule ?? {}), [sel.lesson.module.id]: { lesson: id } } });
+      render(kb ? ['lesson', id] : null);
+    });
+    bindStrip(el, 'ex', (id, kb) => {
+      sel = validPractice({ lesson: sel.lesson.id, ex: id });
+      render(kb ? ['ex', id] : null);
+    });
+    restoreFocus(el, focus);
+  };
+  render();
+}
+
+// ---------- тренировка ----------
+
+function viewTraining(r) {
+  const lesson = findLesson(r.a);
+  if (!lesson) {
+    setChrome(r, { exerciseTitle: 'Урок не найден' });
+    screen('msg', `<h1>Урок не найден</h1><p><a class="btn" href="#/practice">Выбрать упражнение</a></p>`);
+    return;
   }
-  const sm = lessonSummary(progress, lesson);
-
-  app.innerHTML = `
-    <p class="small"><a href="#/">← Уроки</a> · ${esc(lesson.module.title)}</p>
-    <div class="lesson-head">
-      <h1>${esc(lesson.title)}</h1>
-      <div class="meta row">${feelChip(lesson.feel)}</div>
-      <p>${esc(lesson.summary)}</p>
-    </div>
-    ${lesson.steps?.length ? `<h2>Как заниматься</h2><ol>${lesson.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>` : ''}
-    ${ex ? `<h2>Упражнение</h2>
-      ${lesson.exercises.length > 1 ? `<div class="tabs" role="tablist">${lesson.exercises.map((e) =>
-        `<a role="tab" class="chip plain" aria-selected="${e.id === ex.id}" href="#/lesson/${encodeURIComponent(lesson.id)}/${encodeURIComponent(e.id)}"${e.id === ex.id ? ' style="color:var(--accent)"' : ''}>${esc(e.title)}</a>`).join('')}</div>` : ''}
-      <div id="exercise"></div>` : '<p class="muted">В этом уроке нет ритмических упражнений.</p>'}
-    ${usedIds.size ? `<h2>Удары урока</h2><div class="grid">${[...usedIds].map((id) => strokeCard(strokeMap.get(id), { withSources: false })).join('')}</div>` : ''}
-    <h2>Отметка</h2>
-    <label><input type="checkbox" id="lesson-done" ${sm.done ? 'checked' : ''}> Урок пройден (самооценка)</label>
-  `;
-  if (ex) mountExercise(document.getElementById('exercise'), ex, { lesson });
-  app.querySelector('#lesson-done').addEventListener('change', (e) => saveProgress(setLessonDone(progress, lesson.id, e.target.checked)));
-  bindHearButtons(app);
+  const ex = lesson.exercises.find((e) => e.id === r.b) ?? lesson.exercises[0];
+  if (!ex) {
+    setChrome(r, { lessonId: lesson.id, lessonTitle: lessonTab(lesson), exerciseTitle: 'Без упражнений' });
+    screen('msg', `<h1>${esc(lesson.title)}</h1><p>В этом уроке нет ритмических упражнений.</p>
+      <p><a class="btn" href="${href('theory', lesson.id)}">${icon('book', 22)}<span>Теория урока</span></a></p>`);
+    return;
+  }
+  if (lesson.exercises.length) saveLast({ practice: { lesson: lesson.id, ex: ex.id } });
+  setChrome(r, { lessonId: lesson.id, lessonTitle: lessonTab(lesson), exerciseTitle: ex.title });
+  app.innerHTML = '<section class="screen trainer" id="trainer"></section>';
+  mountTrainer(app.firstElementChild, ex, { lesson });
 }
 
-/** Вид практики: лента, без движения или полная запись. Системное «уменьшить движение» → без движения. */
-function preferredView() {
-  const saved = store.get(KEYS.view);
-  if (['moving', 'static', 'staff'].includes(saved)) return saved;
-  return reducedMotion() ? 'static' : 'moving';
-}
-const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-
-/** Панель упражнения: лента, запись, темп, метроном, счётчики, повторения. */
-function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
-  const parsed = parsePattern(ex.pattern, { strokes: C.strokes, subdivision: ex.subdivision, symbols: C.config.symbols });
+/**
+ * Тренировка на весь экран: крупный текущий удар и два следующих, счётчики,
+ * темп, «Играть/Продолжить», «Пауза», «Стоп». Реже нужное — в «Настройках».
+ */
+function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
+  const parsed = parse(ex);
   if (parsed.errors.length) {
     root.innerHTML = `<p class="errors">${esc(parsed.errors.join('\n'))}</p>`;
     return;
@@ -254,10 +433,9 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
   const lanes = C.config.lanes.filter((l) => l.id !== 'unknown' || usedLanes.has('unknown'))
     .map((l) => l.id === 'unknown' ? { ...l, label: 'Слоги' } : l);
   const defaults = C.defaults ?? { slowRate: 60, fastFactor: 2, ladder: { from: 30, to: 90, step: 10 } };
-  const slow = ex.tempo?.slow ?? defaults.slowRate;
-  const fast = Math.round(slow * (defaults.fastFactor ?? 2));
+  const slow = clampTempo(ex.tempo?.slow ?? defaults.slowRate);
+  const fast = clampTempo(slow * (defaults.fastFactor ?? 2));
   const ladderRates = tempoLadder(defaults.ladder.from, defaults.ladder.to, defaults.ladder.step);
-  const prog = () => exerciseProgress(progress, ex.id);
   const perCycle = countStrokes(parsed.slots);
   // Подсказка для каждой поддоли рисунка — по удару события, а не по слогу.
   const tech = techniqueReliability(ex, lesson, parsed.slots, strokeMap);
@@ -265,184 +443,129 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     strokeMap, lanes: C.config.lanes, notes: ex.techniqueNotes ?? [],
     tech: new Map(tech.items.map((i) => [techKey(i), i])),
   };
-  const cues = parsed.slots.map((slot, i) => practiceCue({ ...slot, slotIndex: i }, cueCtx));
-  const viewName = `view-${ex.id}-${sandbox ? 'sb' : 'ex'}`;
+  const cues = parsed.slots.map((slot, i) => ({
+    ...practiceCue({ ...slot, slotIndex: i }, cueCtx), timbre: slotTimbre(slot, strokeMap),
+  }));
+
+  // Настройки прогона (меняются в окне «Настройки», пока не играет).
+  let rate = slow;
+  let cyclesVal = '4';
+  let metroVal = ex.ladder ? 'every1' : 'beat';
+  let synth = true;
+  const title = lesson ? lessonTab(lesson) : ex.title;
 
   root.innerHTML = `
-    <div class="view-switch" role="radiogroup" aria-label="Вид упражнения">
-      <label><input type="radio" name="${viewName}" value="moving"> Лента</label>
-      <label><input type="radio" name="${viewName}" value="static"> Без движения</label>
-      <label><input type="radio" name="${viewName}" value="staff"> Полная запись</label>
+    <div class="tr-head">
+      <h1 class="tr-title">${esc(title)}${lesson && ex.title !== title ? `<span class="tr-sub">${esc(ex.title)}</span>` : ''}</h1>
+      <span class="tr-state" data-el="state" role="status">Готово к игре</span>
+      <button type="button" class="icon-btn" data-act="settings" aria-haspopup="dialog">${icon('gear', 22)}<span>Настройки</span></button>
     </div>
-    <div class="practice-sticky">
-      <div class="lane" id="lane" aria-label="Лента ударов: текущий и следующие по записи"></div>
-      <div class="row play-row">
-        <div class="transport" role="group" aria-label="Воспроизведение">
-          <button type="button" class="primary" id="play">▶ Играть</button>
-          <button type="button" id="pause" disabled>Ⅱ Пауза</button>
-          <button type="button" id="stop" disabled>■ Стоп</button>
-        </div>
-        <span class="small playback-state" id="playback-state" role="status">Готово к игре</span>
-        <div class="now-syl" id="now" aria-hidden="true">—</div>
-        <div class="counters" aria-live="polite">
-          <div class="counter">Удары<b id="c-strokes">0</b></div>
-          <div class="counter">Циклы<b id="c-cycles">0</b></div>
-        </div>
-      </div>
-      <p class="small tempo-msg" id="tempo-msg" aria-live="polite"></p>
+    <div class="stage-wrap">
+      <div class="stage" data-el="stage" role="group" aria-label="Текущий и два следующих удара"></div>
+      <div class="cycle-bar" aria-hidden="true"><i data-el="cbar"></i></div>
+      <p class="tr-msg" data-el="msg" aria-live="polite"></p>
     </div>
-    <p class="small muted lane-note">Следите за текущим и следующими ударами. Число на ладони обозначает количество пальцев.
-      «Пауза» сохраняет место, «Стоп» возвращает к началу.</p>
-    <div class="staff-block">
-      <div class="staff-wrap">${renderStaff({ beats: parsed.beats, strokeMap, lanes, grouping: ex.grouping, title: `Запись: ${ex.title}` })}</div>
-      <div class="staff-legend">${lanes.map((l, i) => `<span>Линия ${i + 1}: ${esc(l.label)}</span>`).join('')}
-        <span>${parsed.beats.length} дол. × ${ex.subdivision} поддол. · ${perCycle} уд. в цикле</span></div>
-    </div>
-    <div class="controls">
-      <div class="row tempo">
-        <label for="rate">Темп</label>
-        <input type="range" id="rate" min="20" max="240" step="1" value="${slow}">
-        <input type="number" id="rate-n" min="20" max="240" value="${slow}" aria-label="Темп, ударов в минуту"> <span class="small muted">ударов в минуту</span>
+    <div class="tr-panel">
+      <div class="tr-info">
+        <div class="counter"><span>Удары</span><b data-el="c-strokes">0</b></div>
+        <div class="counter"><span>Циклы</span><b data-el="c-cycles">0</b></div>
+        <button type="button" class="tempo-btn" data-act="tempo" aria-haspopup="dialog"></button>
       </div>
-      <div class="row">
-        <button type="button" data-rate="${slow}">Медленно (${slow})</button>
-        <button type="button" data-rate="${fast}">Быстро ×2 (${fast})</button>
-        <label>Метроном <select id="metro">${METRONOME_MODES.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select></label>
-        <label>Повторять <select id="cycles">
-          <option value="1">1 цикл</option><option value="2">2 цикла</option><option value="4" selected>4 цикла</option>
-          <option value="8">8 циклов</option><option value="Infinity">без остановки</option></select></label>
-        <label title="Синтезированный звук ударов"><input type="checkbox" id="synth" checked> Звук ударов</label>
+      <div class="transport" role="group" aria-label="Воспроизведение">
+        <button type="button" class="primary" data-act="play"></button>
+        <button type="button" data-act="pause" disabled>Ⅱ Пауза</button>
+        <button type="button" data-act="stop" disabled>■ Стоп</button>
       </div>
-      <p class="small muted">Темп во время игры меняется с начала следующего цикла; полные циклы прежнего темпа записываются с прежним темпом.</p>
-      ${sandbox ? '' : `<p class="small muted">В прогресс записываются только полные циклы — и при «Стоп», и при уходе со страницы.</p>
-      <div class="row">
-        <button type="button" id="rep">Повторение выполнено</button>
-        <span class="small muted" id="rep-info"></span>
-      </div>
-      <details${ex.ladder ? ' open' : ''}>
-        <summary>Лестница темпа: от ${defaults.ladder.from} до ${defaults.ladder.to} через ${defaults.ladder.step}</summary>
-        <p class="small muted">Нажмите на число, чтобы поставить темп; галочка — ступень пройдена (самооценка).</p>
-        <div class="ladder">${ladderRates.map((r) => `<label><input type="checkbox" data-step="${r}"> <button type="button" class="tc-link" data-rate="${r}">${r}</button></label>`).join('')}</div>
-      </details>`}
     </div>`;
 
-  const $ = (s) => root.querySelector(s);
-  const rate = $('#rate');
-  const rateN = $('#rate-n');
-  const metro = $('#metro');
-  const cyclesSel = $('#cycles');
-  metro.value = ex.ladder ? 'every1' : 'beat';
-  const tempoMsg = $('#tempo-msg');
+  const $ = (k) => root.querySelector(`[data-el="${k}"]`);
+  const act = (k) => root.querySelector(`[data-act="${k}"]`);
+  const stage = $('stage');
+  const cbar = $('cbar');
+  const msg = $('msg');
+  const play = act('play');
+  const pause = act('pause');
+  const stop = act('stop');
+  const tempoBtn = act('tempo');
 
-  // ----- лента -----
-  const lane = createLane($('#lane'), (slotIndex) => cues[slotIndex]);
-  const timelineAt = (r) => buildCycleTimeline(parsed.beats, beatBpmFromStrokeRate(r, ex.subdivision));
-  // До старта лента показывает первые удары из того же плана, по которому пойдёт звук.
-  const previewPlan = () => createPlan(timelineAt(Number(rate.value)), { maxCycles: Number(cyclesSel.value), rate: Number(rate.value) });
-  lane.setPlan(previewPlan());
-  lane.setPosition(-1);
-  let view = preferredView();
+  const timelineAt = (n) => buildCycleTimeline(parsed.beats, beatBpmFromStrokeRate(n, ex.subdivision));
+  // До старта сцена показывает первые удары из того же плана, по которому пойдёт звук.
+  const previewPlan = () => createPlan(timelineAt(rate), { maxCycles: Number(cyclesVal), rate });
+  let viewPlan = previewPlan();
+  let cur = -1;
   let run = null;
-  // Плавное движение ленты между событиями — по часам звука (player.now()),
-  // а не по своему таймеру. При «уменьшить движение» лента только перескакивает
-  // на каждом событии (onStep), без плавного хода.
-  const motion = createMotion({
-    wanted: () => Boolean(run) && player.playing && view === 'moving' && !reducedMotion(),
-    frame: () => {
-      const t = player.now();
-      if (t !== null && player.plan) lane.setPosition(positionAtTime(player.plan, t));
-    },
-  });
-  const applyView = (v) => {
-    view = v;
-    root.querySelectorAll(`input[name="${viewName}"]`).forEach((r) => { r.checked = r.value === v; });
-    $('#lane').hidden = v === 'staff';
-    $('.staff-block').hidden = v !== 'staff';
-    if (v !== 'staff') lane.setMode(v);
-    motion.sync(); // возврат к «Ленте» во время игры возобновляет ход
-  };
-  applyView(view);
-  root.querySelectorAll(`input[name="${viewName}"]`).forEach((r) => r.addEventListener('change', () => {
-    store.set(KEYS.view, r.value);
-    applyView(r.value);
-  }));
-  const onResize = () => {
-    if (!root.isConnected) { window.removeEventListener('resize', onResize); return; }
-    if (view === 'moving') lane.relayout();
-  };
-  window.addEventListener('resize', onResize);
 
-  const play = $('#play');
-  const pause = $('#pause');
-  const stop = $('#stop');
-  const state = $('#playback-state');
-  const wrap = $('.staff-wrap');
+  const cueAt = (seq) => {
+    const ev = eventBySeq(viewPlan, seq);
+    if (ev) return cues[ev.slotIndex];
+    return seq > 0 && eventBySeq(viewPlan, seq - 1) ? 'end' : null;
+  };
+  const renderStage = () => {
+    stage.innerHTML = stageHtml(cueAt, cur);
+    const ev = cur >= 0 ? eventBySeq(viewPlan, cur) : null;
+    cbar.style.width = ev ? `${((ev.slotIndex + 1) / parsed.slots.length) * 100}%` : '0%';
+  };
+  const showTempo = () => {
+    tempoBtn.textContent = tempoLabel(rate);
+    tempoBtn.setAttribute('aria-label', `Темп: ${rate} ударов в минуту. Изменить`);
+  };
+  showTempo();
+  renderStage();
+
   const syncControls = () => {
-    play.textContent = player.paused ? '▶ Продолжить' : '▶ Играть';
+    play.textContent = player.paused && run ? '▶ Продолжить' : '▶ Играть';
     play.disabled = Boolean(run) && !player.paused || player.starting;
     pause.disabled = !run || !player.playing || player.starting;
     stop.disabled = !run;
-    cyclesSel.disabled = Boolean(run);
-    metro.disabled = Boolean(run);
-    $('#synth').disabled = Boolean(run);
-    state.textContent = !run ? 'Готово к игре' : player.starting ? 'Включаю звук…' : player.paused ? 'На паузе' : 'Играет';
+    $('state').textContent = !run ? 'Готово к игре' : player.starting ? 'Включаю звук…' : player.paused ? 'На паузе' : 'Играет';
   };
+  syncControls();
 
-  const setRate = (v) => {
-    const n = Math.min(240, Math.max(20, Math.round(Number(v) || slow)));
-    rate.value = n; rateN.value = n;
-    return n;
-  };
-  // Применить темп: до старта — к плану предпросмотра, во время игры — с ближайшей
-  // незапланированной границы цикла (тот же план, по которому звучит звук).
+  // Применить темп: до старта — к плану предпросмотра, во время игры и на паузе —
+  // с ближайшей незапланированной границы цикла (тот же план, по которому звучит звук).
   const applyTempo = (v) => {
-    const n = setRate(v);
+    rate = clampTempo(v, rate);
+    showTempo();
     if (!run) {
-      lane.setPlan(previewPlan());
-      tempoMsg.textContent = '';
+      viewPlan = previewPlan();
+      renderStage();
+      msg.textContent = '';
       return;
     }
-    const r = player.retime(timelineAt(n), n);
+    const r = player.retime(timelineAt(rate), rate);
     if (r) {
-      lane.setPlan(player.plan);
-      tempoMsg.textContent = `Темп ${n} — с начала цикла ${r.cycle + 1}.`;
+      viewPlan = player.plan;
+      renderStage();
+      msg.textContent = `Темп ${rate} — с цикла ${r.cycle + 1}.`;
     } else {
-      tempoMsg.textContent = `До конца прогона новой границы цикла нет: темп ${n} будет при следующем запуске.`;
+      msg.textContent = `Новой границы цикла до конца нет: темп ${rate} будет при следующем запуске.`;
     }
   };
-  rate.addEventListener('input', () => setRate(rate.value));
-  rate.addEventListener('change', () => applyTempo(rate.value));
-  rateN.addEventListener('change', () => applyTempo(rateN.value));
-  root.querySelectorAll('[data-rate]').forEach((b) => b.addEventListener('click', () => applyTempo(b.dataset.rate)));
-  cyclesSel.addEventListener('change', () => { if (!run) lane.setPlan(previewPlan()); });
-
-  const refreshInfo = () => {
-    if (sandbox) return;
-    const p = prog();
-    $('#rep-info').textContent = `Отмечено повторений: ${p.reps} · прозвучало полных циклов: ${p.cycles} · самый быстрый темп с полным циклом: ${p.bestRate || '—'}`;
-    root.querySelectorAll('[data-step]').forEach((c) => { c.checked = Boolean(p.ladder[c.dataset.step]); });
-  };
-  refreshInfo();
-  if (!sandbox) {
-    $('#rep').addEventListener('click', () => { saveProgress(markRep(progress, ex.id, new Date().toISOString())); refreshInfo(); });
-    root.querySelectorAll('[data-step]').forEach((c) => c.addEventListener('change', () => {
-      saveProgress(toggleLadderStep(progress, ex.id, Number(c.dataset.step)));
-    }));
-  }
+  tempoBtn.addEventListener('click', () => {
+    const presets = [{ label: `Медленно ${slow}`, value: slow }, { label: `Быстро ×2 ${fast}`, value: fast }];
+    if (ex.ladder) ladderRates.forEach((n) => presets.push({ label: String(n), value: n }));
+    openTempoPicker(root, {
+      value: rate, presets, onDone: applyTempo, returnFocus: tempoBtn,
+      note: run ? 'Во время игры новый темп начнётся со следующего цикла.' : '',
+    });
+  });
 
   const highlight = (i) => {
-    root.querySelectorAll('.slot-hl.cur').forEach((r) => r.classList.remove('cur'));
+    root.querySelectorAll('.slot-hl.cur').forEach((x) => x.classList.remove('cur'));
     if (i < 0) return;
     const cell = root.querySelector(`.slot-hl[data-slot="${i}"]`);
-    if (!cell) return;
+    const wrap = root.querySelector('.staff-wrap');
+    if (!cell || !wrap) return;
     cell.classList.add('cur');
     // Прокручиваем только рамку записи, не страницу.
     const left = Number(cell.getAttribute('x'));
     const next = followScrollLeft(wrap, left, left + Number(cell.getAttribute('width')));
     if (next !== null) wrap.scrollLeft = next;
   };
+
   // Записать ещё не записанные полные циклы. Частичный цикл не засчитывается,
   // повторный вызов ничего не добавляет (см. model/practice-run.js).
+  let refreshInfo = () => {};
   const commit = (close) => {
     const r = run?.take({ close });
     if (r && !sandbox) {
@@ -454,24 +577,20 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     player.stop();
     commit(true);
     run = null;
-    motion.sync();
     if (practice?.root === root) practice = null;
+    cur = -1;
+    viewPlan = previewPlan();
     syncControls();
     highlight(-1);
-    $('#now').textContent = '—';
-    $('#c-strokes').textContent = '0';
-    $('#c-cycles').textContent = '0';
-    tempoMsg.textContent = '';
-    wrap.scrollLeft = 0;
-    // Лента возвращается к началу: первые удары следующего запуска.
-    lane.setPlan(previewPlan());
-    lane.setPosition(-1);
+    $('c-strokes').textContent = '0';
+    $('c-cycles').textContent = '0';
+    msg.textContent = '';
+    // Сцена возвращается к началу: первые удары следующего запуска.
+    renderStage();
   };
   pause.addEventListener('click', () => {
     if (!run || !player.pause()) return;
     commit(false);
-    if (view === 'moving' && !reducedMotion()) lane.setPosition(positionAtTime(player.plan, player.now()));
-    motion.sync();
     syncControls();
   });
   stop.addEventListener('click', () => {
@@ -480,6 +599,7 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     finish();
   });
   play.addEventListener('click', async () => {
+    narrator.stop();
     if (run) {
       if (!player.paused || player.starting) return;
       const thisRun = run;
@@ -488,29 +608,28 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
       const status = await pending;
       if (run !== thisRun) return;
       syncControls();
-      motion.sync();
-      if (status === 'failed') tempoMsg.textContent = startFailureText();
-      else if (tempoMsg.textContent === startFailureText()) tempoMsg.textContent = '';
+      if (status === 'failed') msg.textContent = startFailureText();
+      else if (msg.textContent === startFailureText()) msg.textContent = '';
       return;
     }
     endPractice();
-    const strokesPerMin = Number(rate.value);
-    const maxCycles = Number(cyclesSel.value);
+    const strokesPerMin = rate;
+    const maxCycles = Number(cyclesVal);
     const plan = createPlan(timelineAt(strokesPerMin), { maxCycles, rate: strokesPerMin });
     run = createPracticeRun({
       slotsPerCycle: parsed.slots.length, strokesPerCycle: perCycle, rate: strokesPerMin, maxCycles,
     });
     practice = { root, end: finish, checkpoint: () => commit(false) };
-    $('#c-strokes').textContent = '0';
-    $('#c-cycles').textContent = '0';
-    tempoMsg.textContent = '';
-    wrap.scrollLeft = 0;
-    lane.setPlan(plan);
-    lane.setPosition(-1);
+    $('c-strokes').textContent = '0';
+    $('c-cycles').textContent = '0';
+    msg.textContent = '';
+    viewPlan = plan;
+    cur = -1;
+    renderStage();
     const thisRun = run;
-    $('#now').textContent = 'включаю звук…';
+    player.setVolume(practiceVolume);
     const pending = player.start({
-      plan, strokeSounds: soundMap(), metronomeId: metro.value, playStrokes: $('#synth').checked,
+      plan, strokeSounds: soundMap(), metronomeId: metroVal, playStrokes: synth,
       onStep: (ev) => {
         if (run !== thisRun) return;
         // Первое событие нового темпа: циклы прежнего темпа записываются с прежним темпом.
@@ -518,12 +637,14 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
           commit(false);
           run.setRate(ev.rate);
         }
+        if (ev.rate === rate && msg.textContent.startsWith('Темп ')) msg.textContent = '';
         run.step(ev);
+        viewPlan = player.plan ?? viewPlan;
+        cur = ev.seq;
+        renderStage();
         highlight(ev.slotIndex);
-        lane.setPosition(ev.seq);
-        $('#now').textContent = slotLabel(ev, strokeMap);
-        $('#c-strokes').textContent = String(run.heard.strokes);
-        $('#c-cycles').textContent = String(run.heard.cycles);
+        $('c-strokes').textContent = String(run.heard.strokes);
+        $('c-cycles').textContent = String(run.heard.cycles);
       },
       onEnd: () => { if (run === thisRun) finish(); },
     });
@@ -533,155 +654,298 @@ function mountExercise(root, ex, { sandbox = false, lesson = null } = {}) {
     if (status !== 'started') {
       // Браузер отказал (или запуск отменён в обход этой кнопки): интерфейс — в исходное.
       finish();
-      if (status === 'failed') tempoMsg.textContent = startFailureText();
+      if (status === 'failed') msg.textContent = startFailureText();
       return;
     }
-    if ($('#now').textContent === 'включаю звук…') $('#now').textContent = '—';
     syncControls();
-    motion.sync();
   });
-}
 
-function viewStrokes() {
-  app.innerHTML = `<h1>Удары</h1>
-    <p class="muted">Названия ударов и подсказки для рук. Нажмите «Послушать», чтобы услышать синтезированный звук.</p>
-    <div class="grid">${C.strokes.map((s) => strokeCard(s)).join('')}</div>`;
-  bindHearButtons(app);
-}
-
-function viewProgress() {
-  const rows = allLessons().filter((l) => l.exercises.length).map((l) => l.exercises.map((e, i) => {
-    const p = exerciseProgress(progress, e.id);
-    return `<tr>${i === 0 ? `<td rowspan="${l.exercises.length}"><a href="#/lesson/${encodeURIComponent(l.id)}">${esc(l.title)}</a>${progress.lessons[l.id] ? ' ✓' : ''}</td>` : ''}
-      <td>${esc(e.title)}</td><td>${p.reps}</td><td>${p.cycles}</td><td>${p.bestRate || '—'}</td>
-      <td>${Object.keys(p.ladder).sort((a, b) => a - b).join(', ') || '—'}</td>
-      <td class="small">${p.last ? esc(new Date(p.last).toLocaleString('ru-RU')) : '—'}</td></tr>`;
-  }).join('')).join('');
-  app.innerHTML = `<h1>Прогресс</h1>
-    <p class="muted">Это самооценка: приложение не слушает вашу игру. «Повторения» — ваши отметки, «циклы» — сколько полных циклов прозвучало с метрономом/эталоном.
-    Темп — самый быстрый, на котором приложение проиграло полный цикл, а не проверенный темп вашей игры.
-    Данные хранятся только в этом браузере.</p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Урок</th><th>Упражнение</th><th>Повторений</th><th>Циклов</th><th>Самый быстрый темп с полным циклом</th><th>Ступени лестницы</th><th>Последнее занятие</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-    <p><button type="button" id="reset">Сбросить прогресс</button></p>`;
-  app.querySelector('#reset').addEventListener('click', () => {
-    if (confirm('Удалить весь прогресс в этом браузере?')) { saveProgress(emptyProgress()); viewProgress(); }
-  });
-}
-
-function viewEditor() {
-  const cur = { config: C.config, strokes: C.strokes, modules: C.modules };
-  app.innerHTML = `<h1>Для преподавателя</h1>
-    <p class="muted">Здесь меняются названия ударов, описание техники, значки, обозначения «на два / на три» и сами упражнения — без правки кода.
-    Правки проверяются и сохраняются только в этом браузере; чтобы перенести их в проект, скачайте JSON и замените файлы в папке content/.</p>
-    ${overrideNotice ? `<p class="warn small">${esc(overrideNotice)}</p>` : ''}
-    <h2>Песочница записи</h2>
-    <div class="row sandbox-fields">
-      <label class="wide">Запись <input type="text" id="sb-pattern" value=">ke na | na >ko | na na | >ke na" spellcheck="false" autocapitalize="off"></label>
-      <label>Поддолей в доле <input type="number" id="sb-sub" min="1" max="12" value="2"></label>
-      <label>Группировка <input type="text" id="sb-group" size="8" value="3+3+2"></label>
-    </div>
-    <p class="small muted">Правила: слоги через пробел (id из словаря или псевдоним); «|» — граница доли; «-» — пауза; «&gt;» перед слогом — акцент;
-    «a+b» — одновременно; «re=Те» — техника «re», подпись «Те».</p>
-    <div id="sandbox"></div>
-    <h2>Данные</h2>
-    <div class="row" role="tablist">
-      <button type="button" data-doc="strokes" aria-pressed="true">Удары</button>
-      <button type="button" data-doc="modules" aria-pressed="false">Уроки</button>
-      <button type="button" data-doc="config" aria-pressed="false">Настройки записи</button>
-    </div>
-    <textarea id="json" spellcheck="false" aria-label="JSON"></textarea>
-    <div class="row">
-      <button type="button" id="check">Проверить</button>
-      <button type="button" class="primary" id="save">Сохранить в этом браузере</button>
-      <button type="button" id="download">Скачать JSON</button>
-      <button type="button" id="restore">Вернуть исходные</button>
-    </div>
-    <div id="msg" class="small"></div>`;
-
-  const sb = () => {
-    const ex = {
-      id: 'sandbox', title: 'Песочница', pattern: app.querySelector('#sb-pattern').value,
-      subdivision: Number(app.querySelector('#sb-sub').value), status: 'teacher', rhythmStatus: 'teacher',
-    };
-    const g = app.querySelector('#sb-group').value.split('+').map(Number).filter((n) => n > 0);
-    const r = parsePattern(ex.pattern, { strokes: C.strokes, subdivision: ex.subdivision, symbols: C.config.symbols });
-    if (g.length && g.reduce((a, b) => a + b, 0) === r.slots.length) ex.grouping = g;
-    endPractice();
-    mountExercise(app.querySelector('#sandbox'), ex, { sandbox: true });
-  };
-  ['#sb-pattern', '#sb-sub', '#sb-group'].forEach((s) => app.querySelector(s).addEventListener('input', sb));
-  sb();
-
-  const draft = structuredClone(cur);
-  let doc = 'strokes';
-  const ta = app.querySelector('#json');
-  const msg = app.querySelector('#msg');
-  const show = () => { ta.value = JSON.stringify(draft[doc], null, 2); };
-  const pull = () => {
-    try { draft[doc] = JSON.parse(ta.value); return true; } catch (e) {
-      msg.innerHTML = `<p class="errors">JSON не разобран: ${esc(e.message)}</p>`; return false;
+  // ----- окно «Настройки» -----
+  act('settings').addEventListener('click', () => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'sheet settings-sheet';
+    dlg.setAttribute('aria-labelledby', 'set-h');
+    const locked = Boolean(run);
+    dlg.innerHTML = `<form method="dialog" class="sheet-body">
+      <h2 id="set-h" class="sheet-title">Настройки упражнения</h2>
+      ${stripHtml({ name: 'settings', label: 'Разделы настроек', selected: 'sound', items: [
+        { id: 'sound', label: 'Звук' }, ...(!sandbox ? [{ id: 'progress', label: 'Прогресс' }] : []), { id: 'staff', label: 'Запись' },
+      ] })}
+      <div class="set-grid" data-set-panel="sound">
+        ${locked ? '<p class="sheet-note set-lock">Для смены настроек нажмите «Стоп».</p>' : ''}
+        <label>Повторять <select data-s="cycles"${locked ? ' disabled' : ''}>
+          <option value="1">1 цикл</option><option value="2">2 цикла</option><option value="4">4 цикла</option>
+          <option value="8">8 циклов</option><option value="Infinity">без остановки</option></select></label>
+        <label>Метроном <select data-s="metro"${locked ? ' disabled' : ''}>${METRONOME_MODES.map((m) => `<option value="${m.id}">${esc(m.label)}</option>`).join('')}</select></label>
+        <label class="check"><input type="checkbox" data-s="synth"${synth ? ' checked' : ''}${locked ? ' disabled' : ''}> Звук ударов</label>
+        <label>Громкость <input type="range" data-s="vol" min="0" max="100" value="${Math.round(practiceVolume * 100)}" aria-valuetext="${Math.round(practiceVolume * 100)}%"></label>
+      </div>
+      ${sandbox ? '' : `<div class="set-progress" data-set-panel="progress" hidden>
+        <div class="row"><button type="button" data-s="rep">+1 повторение</button><span class="small muted" data-s="rep-info"></span></div>
+        ${ex.ladder ? `<fieldset class="ladder"><legend class="small">Лестница темпа (самооценка)</legend>${ladderRates.map((n) =>
+          `<label><input type="checkbox" data-step="${n}"> ${n}</label>`).join('')}</fieldset>` : ''}
+        ${lesson ? `<label class="check"><input type="checkbox" data-s="done"${lessonSummary(progress, lesson).done ? ' checked' : ''}> Урок пройден (самооценка)</label>` : ''}
+      </div>`}
+      <div class="set-staff" data-set-panel="staff" hidden>
+        <div class="staff-wrap">${renderStaff({ beats: parsed.beats, strokeMap, lanes, grouping: ex.grouping, title: `Запись: ${ex.title}` })}</div>
+      </div>
+      <div class="sheet-actions"><button type="submit" class="primary">Готово</button></div>
+    </form>`;
+    root.append(dlg);
+    bindStrip(dlg, 'settings', (id, kb) => {
+      dlg.querySelectorAll('[data-set-panel]').forEach(p => { p.hidden = p.dataset.setPanel !== id; });
+      dlg.querySelectorAll('[data-tab]').forEach(b => { const selected = b.dataset.tab === id; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1; });
+      if (kb) focusTab(dlg, 'settings', id);
+    });
+    const s = (k) => dlg.querySelector(`[data-s="${k}"]`);
+    s('cycles').value = cyclesVal;
+    s('metro').value = metroVal;
+    s('cycles').addEventListener('change', () => {
+      if (run) return;
+      cyclesVal = s('cycles').value;
+      viewPlan = previewPlan();
+      renderStage();
+    });
+    s('metro').addEventListener('change', () => { if (!run) metroVal = s('metro').value; });
+    s('synth').addEventListener('change', () => { if (!run) synth = s('synth').checked; });
+    s('vol').addEventListener('input', () => {
+      practiceVolume = Number(s('vol').value) / 100;
+      s('vol').setAttribute('aria-valuetext', `${s('vol').value}%`);
+      player.setVolume(practiceVolume);
+    });
+    if (!sandbox) {
+      refreshInfo = () => {
+        if (!dlg.isConnected) return;
+        const p = exerciseProgress(progress, ex.id);
+        s('rep-info').textContent = `отмечено: ${p.reps} · полных циклов: ${p.cycles} · лучший темп: ${p.bestRate || '—'}`;
+        dlg.querySelectorAll('[data-step]').forEach((c) => { c.checked = Boolean(p.ladder[c.dataset.step]); });
+      };
+      refreshInfo();
+      s('rep').addEventListener('click', () => { saveProgress(markRep(progress, ex.id, new Date().toISOString())); refreshInfo(); });
+      dlg.querySelectorAll('[data-step]').forEach((c) => c.addEventListener('change', () => {
+        saveProgress(toggleLadderStep(progress, ex.id, Number(c.dataset.step)));
+      }));
+      s('done')?.addEventListener('change', (e) => saveProgress(setLessonDone(progress, lesson.id, e.target.checked)));
     }
-  };
-  show();
-  app.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => {
-    if (!pull()) return;
-    doc = b.dataset.doc;
-    app.querySelectorAll('[data-doc]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-    show();
-  }));
-  const check = () => {
-    if (!pull()) return null;
-    const errs = validateContent(draft);
-    msg.innerHTML = errs.length
-      ? `<p class="errors">Ошибок: ${errs.length}\n${esc(errs.join('\n'))}</p>`
-      : '<p class="ok">Ошибок нет.</p>';
-    return errs;
-  };
-  app.querySelector('#check').addEventListener('click', check);
-  app.querySelector('#save').addEventListener('click', () => {
-    const errs = check();
-    if (!errs || errs.length) return;
-    if (!store.set(KEYS.overrides, draft)) { msg.innerHTML = '<p class="errors">Хранилище браузера недоступно — сохранить не удалось.</p>'; return; }
-    applyOverrides();
-    msg.innerHTML = '<p class="ok">Сохранено в этом браузере. Изменения уже действуют во всех разделах.</p>';
-  });
-  app.querySelector('#download').addEventListener('click', () => {
-    if (!pull()) return;
-    const name = { strokes: 'strokes.json', modules: 'lessons.json', config: 'notation-config.json' }[doc];
-    const body = doc === 'strokes' ? { version: base.strokes.version, strokes: draft.strokes }
-      : doc === 'modules' ? { version: '0.1.0', defaults: C.defaults, modules: draft.modules } : draft.config;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' }));
-    a.download = name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  });
-  app.querySelector('#restore').addEventListener('click', () => {
-    if (!confirm('Удалить правки преподавателя в этом браузере и вернуть исходные данные?')) return;
-    store.del(KEYS.overrides);
-    applyOverrides();
-    viewEditor();
+    dlg.addEventListener('close', () => {
+      dlg.remove();
+      refreshInfo = () => {};
+      act('settings')?.focus();
+    });
+    showDialog(dlg);
   });
 }
 
-function viewAbout() {
-  app.innerHTML = `<h1>О приложении</h1>
-    <p>«Мриданга» помогает разучивать ритмические мантры: следуйте ленте ударов, выбирайте темп и занимайтесь с метрономом.</p>
-    <h2>Как заниматься</h2>
-    <p>Начните медленно. На ленте видны текущий и следующие удары. Нажмите «Паузу», чтобы разобрать нужное место, и «Продолжить», чтобы вернуться к игре. «Стоп» начинает упражнение заново.</p>
-    <p>Звук ударов синтезирован. В упражнениях используется равномерный учебный пульс для разучивания последовательности слогов.</p>
-    <p>Повторения отмечайте самостоятельно. Счётчики учитывают воспроизведение упражнения. Прогресс сохраняется в этом браузере.</p>
-    <h2>Материалы курса</h2>
-    <p>Основа программы — видеокурс «Mridanga Lessons», scsmath, Sadhu Priya das.</p>`;
+// ---------- теория ----------
+
+/** Страницы урока: описание, затем по одному шагу; длинное делится на страницы. */
+function theoryPages(lesson) {
+  const pages = paginate(lesson.summary, 110).map((text) => ({ kind: 'summary', text }));
+  (lesson.steps ?? []).forEach((s, i) => paginate(s, 110).forEach((text) => pages.push({ kind: 'step', n: i + 1, text })));
+  if (!pages.length) pages.push({ kind: 'summary', text: lesson.title });
+  return pages;
 }
 
-// Диагностика звука для проверки на телефонах: пробный щелчок, звуки ударов по
-// одному, метроном, метроном вместе с упражнением и лентой, безопасная громкость,
-// мгновенный стоп и сведения для бланка. Микрофон и камера не используются.
+/** Удары, названные в тексте шага в «кавычках», среди ударов упражнений урока. */
+function mentionedStrokes(text, lesson) {
+  const used = [];
+  for (const e of lesson.exercises) {
+    const r = parse(e);
+    r.slots.forEach((s) => s.strokes.forEach((id) => { if (!used.includes(id)) used.push(id); }));
+  }
+  const tokens = [...String(text).matchAll(/«([^»]+)»/g)].flatMap((m) => m[1].split(/\s+/));
+  const out = [];
+  for (const tok of tokens) {
+    const id = used.find((u) => strokeMap.get(u)?.label.toLowerCase() === tok.toLowerCase())
+      ?? C.strokes.find((s) => s.label.toLowerCase() === tok.toLowerCase())?.id;
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return { ids: out, tokens };
+}
+
+function theoryVisual(page, lesson, pages) {
+  const ex = lesson.exercises[0];
+  if (page.kind === 'step') {
+    const { ids, tokens } = mentionedStrokes(page.text, lesson);
+    if (ids.length && tokens.length <= 3) {
+      return `<div class="figs" data-n="${ids.length}">${ids.slice(0, 3).map((id) => strokeFigure(strokeMap.get(id), { size: ids.length > 1 ? 80 : 110 })).join('')}</div>`;
+    }
+    if (tokens.length > 3) {
+      return `<div class="seq">${tokens.map((t) => `<span class="syl-chip">${esc(t)}</span>`).join('')}</div>`;
+    }
+    const steps = pages.filter((p) => p.kind === 'step').length;
+    return `<div class="step-badge" aria-hidden="true"><b>${page.n}</b><span>шаг из ${steps}</span></div>`;
+  }
+  return ex ? seqChips(ex, 16) : `<div class="step-badge" aria-hidden="true">${icon('book', 64)}</div>`;
+}
+
+function viewTheory(r) {
+  const lessons = allLessons();
+  const fromRoute = findLesson(r.a);
+  let sel = fromRoute ? { lesson: fromRoute, step: Math.max(0, (Number(r.b) || 1) - 1) } : validTheory(last.theory) ?? { lesson: lessons[0], step: 0 };
+  const render = (focus = null) => {
+    const { lesson } = sel;
+    const pages = theoryPages(lesson);
+    sel.step = Math.min(Math.max(0, sel.step), pages.length - 1);
+    const page = pages[sel.step];
+    saveLast({ theory: { lesson: lesson.id, step: sel.step } });
+    history.replaceState(null, '', href('theory', lesson.id, sel.step + 1));
+    setChrome(r, { lessonTitle: lessonTab(lesson) });
+    const track = narrationFor(narration, 'lesson', lesson.id);
+    const inModule = lesson.module.lessons;
+    const el = screen('theory', `
+      <h1 class="vh">Теория</h1>
+      ${stripHtml({ name: 'group', label: 'Разделы курса', size: 'sm', selected: lesson.module.id,
+        items: C.modules.map((m) => ({ id: m.id, label: moduleTab(m) })) })}
+      ${inModule.length > 1 ? stripHtml({ name: 'lesson', label: 'Уроки', selected: lesson.id, controls: 'th-card',
+        items: inModule.map((l) => ({ id: l.id, label: lessonTab({ ...l }) })) }) : ''}
+      <article class="card th-card" id="th-card" role="tabpanel" aria-label="${esc(lessonTab(lesson))}">
+        <div class="th-top"><h2>${esc(page.kind === 'summary' ? lessonTab(lesson) : `Шаг ${page.n}`)}</h2>${narrationHtml(track)}${lesson.exercises.length ? `<a class="btn th-play" href="${href('lesson', lesson.id, lesson.exercises[0].id)}">${icon('play', 18)}<span>Играть</span></a>` : ''}</div>
+        <div class="th-visual">${theoryVisual(page, lesson, pages)}</div>
+        <p class="th-text">${esc(page.text)}</p>
+      </article>
+      ${pagerHtml({ index: sel.step, total: pages.length, label: 'Шаги урока' })}
+`);
+    bindNarration(el, track);
+    bindStrip(el, 'group', (id, kb) => {
+      const m = C.modules.find((x) => x.id === id);
+      sel = { lesson: findLesson(m.lessons[0].id), step: 0 };
+      narrator.stop();
+      render(kb ? ['group', id] : null);
+    });
+    bindStrip(el, 'lesson', (id, kb) => {
+      sel = { lesson: findLesson(id), step: 0 };
+      narrator.stop();
+      render(kb ? ['lesson', id] : null);
+    });
+    bindPager(el, (d) => { sel.step += d; render(['pager', d]); });
+    restoreFocus(el, focus);
+  };
+  render();
+}
+
+// ---------- удары ----------
+
+function strokeTabs() {
+  const count = new Map();
+  C.strokes.forEach((s) => count.set(s.label, (count.get(s.label) ?? 0) + 1));
+  const seen = new Map();
+  return C.strokes.map((s) => {
+    if (count.get(s.label) === 1) return { id: s.id, label: s.label };
+    const n = (seen.get(s.label) ?? 0) + 1;
+    seen.set(s.label, n);
+    return { id: s.id, label: `${s.label} ${n}` };
+  });
+}
+
+function viewStrokes(r) {
+  const tabs = strokeTabs();
+  const pick = (id) => tabs.findIndex((t) => t.id === id);
+  let i = [pick(r.a), pick(last.stroke), 0].find((x) => x >= 0);
+  const render = (focus = null) => {
+    const s = C.strokes[i];
+    saveLast({ stroke: s.id });
+    history.replaceState(null, '', href('strokes', s.id));
+    setChrome(r, { lessonTitle: tabs[i].label });
+    const described = s.status === 'confirmed' && !s.conflict;
+    const hand = trustedHand(s);
+    const text = described ? s.technique : '';
+    const el = screen('strokes', `
+      <h1 class="vh">Удары</h1>
+      ${stripHtml({ name: 'stroke', label: 'Удары', selected: s.id, controls: 'st-card', items: tabs })}
+      <article class="card st-card" id="st-card" role="tabpanel" aria-label="${esc(s.label)}">
+        <div class="st-visual">${strokeFigure(s, { size: 140 })}</div>
+        <div class="st-text">
+          ${hand ? `<p class="st-hint">${esc(hand.short ?? hand.hint)}</p>` : ''}
+          <div class="row"><button type="button" data-hear="${esc(s.id)}">${icon('sound', 22)}<span>Послушать</span></button>
+            <span class="small muted" data-hear-st role="status"></span></div>
+          ${text ? `<details class="st-more"><summary>Подробнее</summary><p class="small">${esc(text)}</p></details>` : ''}
+        </div>
+      </article>
+      ${pagerHtml({ index: i, total: tabs.length, label: 'Удары по порядку' })}`);
+    bindStrip(el, 'stroke', (id, kb) => { i = pick(id); render(kb ? ['stroke', id] : null); });
+    bindPager(el, (d) => { i = Math.min(tabs.length - 1, Math.max(0, i + d)); render(['pager', d]); });
+    el.querySelector('[data-hear]').addEventListener('click', (e) => hearStroke(e.currentTarget.dataset.hear, el.querySelector('[data-hear-st]')));
+    restoreFocus(el, focus);
+  };
+  render();
+}
+
+// ---------- прогресс ----------
+
+function viewProgress(r) {
+  const lessons = practiceLessons();
+  let i = Math.max(0, lessons.findIndex((l) => l.id === (r.a ?? last.progress)));
+  const render = (focus = null) => {
+    const lesson = lessons[i];
+    saveLast({ progress: lesson.id });
+    history.replaceState(null, '', href('progress', lesson.id));
+    setChrome(r, { lessonTitle: lessonTab(lesson) });
+    const totals = lessons.reduce((a, l) => {
+      l.exercises.forEach((e) => { const p = exerciseProgress(progress, e.id); a.reps += p.reps; a.cycles += p.cycles; });
+      if (progress.lessons[l.id]) a.done += 1;
+      return a;
+    }, { reps: 0, cycles: 0, done: 0 });
+    const sm = lessonSummary(progress, lesson);
+    const el = screen('progress', `
+      <h1 class="vh">Прогресс</h1>
+      <div class="totals">
+        <div class="total"><b>${totals.reps}</b><span>повторений</span></div>
+        <div class="total"><b>${totals.cycles}</b><span>полных циклов</span></div>
+        <div class="total"><b>${totals.done}/${lessons.length}</b><span>уроков пройдено</span></div>
+      </div>
+      <article class="card pr-card" id="pr-card" aria-label="${esc(lessonTab(lesson))}">
+        <h2>${esc(lessonTab(lesson))}${sm.done ? ' <span class="chip">пройден</span>' : ''}</h2>
+        <ul class="pr-list">${lesson.exercises.map((e) => {
+          const p = exerciseProgress(progress, e.id);
+          return `<li><span class="pr-ex">${esc(e.title)}</span>
+            <span class="pr-nums"><span><b>${p.reps}</b> повт.</span><span><b>${p.cycles}</b> цикл.</span><span>темп <b>${p.bestRate || '—'}</b></span></span></li>`;
+        }).join('')}</ul>
+        <label class="check"><input type="checkbox" data-done${sm.done ? ' checked' : ''}> Урок пройден (самооценка)</label>
+      </article>
+      ${pagerHtml({ index: i, total: lessons.length, label: 'Уроки по порядку' })}
+      <div class="pr-foot"><p class="small muted">Самооценка. Данные — в этом браузере.</p>
+        <button type="button" class="link-btn small" data-reset>Сбросить прогресс</button></div>`);
+    bindPager(el, (d) => { i = Math.min(lessons.length - 1, Math.max(0, i + d)); render(['pager', d]); });
+    el.querySelector('[data-done]').addEventListener('change', (e) => {
+      saveProgress(setLessonDone(progress, lesson.id, e.target.checked));
+      render();
+      app.querySelector('[data-done]')?.focus();
+    });
+    el.querySelector('[data-reset]').addEventListener('click', () => {
+      if (confirm('Удалить весь прогресс в этом браузере?')) { saveProgress(emptyProgress()); render(); }
+    });
+    restoreFocus(el, focus);
+  };
+  render();
+}
+
+// ---------- о приложении ----------
+
+function viewAbout(r) {
+  setChrome(r);
+  const track = narrationFor(narration, 'about');
+  const el = screen('about', `
+    <article class="card about-card">
+      <div class="th-top"><h1>О приложении</h1>${narrationHtml(track)}</div>
+      <p>Ритмические мантры с подсказками и метрономом.</p>
+      <ul class="about-list">
+        <li>${icon('sound', 22)}<span>Учебный синтез звука.</span></li>
+        <li>${icon('play', 22)}<span>Ровный пульс для изучения слогов.</span></li>
+        <li>${icon('chart', 22)}<span>Счётчик воспроизведения. Прогресс — самооценка.</span></li>
+      </ul>
+      <p class="small muted">По курсу Sadhu Priya das, scsmath.</p>
+      <p class="small muted">Версия ${APP_VERSION}</p>
+    </article>`);
+  bindNarration(el, track);
+}
+
+// ---------- проверка звука ----------
+
+// Короткая проверка на телефоне: щелчок, метроном, удары по одному, громкость
+// и «Стоп». Сведения для бланка и проба с упражнением — в свёрнутом блоке.
+// Микрофон и камера не используются.
 const DIAG_VOLUME = 0.3;
-const PLAYER_VOLUME = 0.8;
 
 function diagInfoText() {
   const a = player.audioInfo();
@@ -691,7 +955,7 @@ function diagInfoText() {
     `Адрес: ${location.origin}`,
     `Браузер: ${navigator.userAgent}`,
     `Экран: ${window.innerWidth}×${window.innerHeight} CSS px, плотность ${window.devicePixelRatio}`,
-    `Уменьшение движения: ${reducedMotion() ? 'включено' : 'выключено'}`,
+    `Уменьшение движения: ${window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'включено' : 'выключено'}`,
     `Звук: ${a.state}${a.sampleRate ? `, ${a.sampleRate} Гц` : ''}`,
     `baseLatency: ${a.state === 'не создан' ? '—' : ms(a.baseLatency)}`,
     `outputLatency: ${a.state === 'не создан' ? '—' : ms(a.outputLatency)}`,
@@ -699,49 +963,46 @@ function diagInfoText() {
   ].join('\n');
 }
 
-function viewSound() {
+function viewSound(r) {
+  setChrome(r);
   player.setVolume(DIAG_VOLUME);
   const exercises = allLessons().flatMap((l) => l.exercises.map((e) => ({ e, l })));
-  app.innerHTML = `<h1>Проверка звука</h1>
-    <p>Экран для проверки на телефоне: слышно ли звук, не перекрывает ли метроном удары и совпадает ли подсказка со звуком.
-    Начните с тихой громкости; громкость устройства держите на середине.</p>
-    <p class="small warn">Звук — синтезированное приближение, не запись мриданги. Микрофон и камера не используются, ничего никуда не отправляется.</p>
-    <div class="diag-grid">
-      <div class="row diag-bar" role="region" aria-label="Стоп и громкость">
-        <button type="button" class="primary diag-stop" id="d-stop">■ Стоп</button>
-        <label>Громкость <input type="range" id="d-vol" min="0" max="100" value="${Math.round(DIAG_VOLUME * 100)}"> <span id="d-vol-n">${Math.round(DIAG_VOLUME * 100)}%</span></label>
-        <div class="diag-flash" id="d-flash" aria-hidden="true">●</div>
-        <span class="small diag-state" id="d-state" role="status">остановлено</span>
+  const el = screen('sound', `
+    <article class="card sound-card">
+      <h1>Проверка звука</h1>
+      <p class="small muted">Начните с умеренной громкости.</p>
+      <div class="sound-main">
+        <button type="button" data-d="click">Один щелчок</button>
+        <label class="inline">Темп <select data-d="metro-rate" aria-label="Щелчков в минуту"><option>40</option><option selected>60</option><option>120</option><option>180</option></select></label>
+        <button type="button" data-d="metro">Включить</button>
+        <button type="button" class="primary" data-d="stop">■ Стоп</button>
       </div>
-      <p class="small muted">Панель «Стоп» и громкость всегда внизу экрана. Громкость здесь — только для этого экрана; на страницах уроков остаётся ${Math.round(PLAYER_VOLUME * 100)}%. Кружок вспыхивает в момент, на который запланирован звук.</p>
-      <h2>1. Пробный щелчок</h2>
-      <div class="row"><button type="button" id="d-click">Один щелчок</button></div>
-      <h2>2. Звуки ударов по одному</h2>
-      <div class="diag-sounds">${C.strokes.map((st) => `<button type="button" data-diag-stroke="${esc(st.id)}" >${esc(st.label)}</button>`).join('')}</div>
-      <h2>3. Метроном</h2>
-      <div class="row">
-        <label>Темп <select id="d-metro-rate"><option>40</option><option selected>60</option><option>120</option><option>180</option></select> щелчков/мин</label>
-        <button type="button" id="d-metro">Метроном без остановки</button>
+      <div class="sound-vol">
+        <label>Громкость <input type="range" data-d="vol" min="0" max="100" value="${Math.round(DIAG_VOLUME * 100)}"></label>
+        <span data-d="vol-n">${Math.round(DIAG_VOLUME * 100)}%</span>
+        <span class="diag-flash" data-d="flash" aria-hidden="true"></span>
+        <span class="small diag-state" data-d="state" role="status">остановлено</span>
       </div>
-      <h2>4. Метроном вместе с упражнением</h2>
-      <div class="row">
-        <label>Упражнение <select id="d-ex">${exercises.map(({ e, l }) => `<option value="${esc(e.id)}"${e.id === 'pm1' ? ' selected' : ''}>${esc(l.title)} — ${esc(e.title)}</option>`).join('')}</select></label>
-        <label>Темп <select id="d-ex-rate"><option>40</option><option selected>60</option><option>90</option><option>120</option><option>180</option></select> ударов/мин</label>
-        <button type="button" id="d-ex-play">Играть с метрономом</button>
-      </div>
-      <div class="lane" id="d-lane"></div>
-      <details><summary>Сведения о звуке</summary>
-      <pre class="diag-info" id="d-info"></pre>
-      <div class="row"><button type="button" id="d-copy">Скопировать</button> <span class="small muted" id="d-copy-st"></span></div>
-      <p class="small muted">Задержки baseLatency и outputLatency — то, что сообщает браузер. Это не измерение задержки динамика или Bluetooth;
-      без отдельного измерения с калибровкой абсолютная задержка неизвестна.</p></details>
-    </div>`;
-  const $ = (q) => app.querySelector(q);
-  const flash = $('#d-flash');
-  const info = () => { $('#d-info').textContent = diagInfoText(); };
+      <div class="strip strip-sm over-ok"><div class="strip-scroll" role="group" aria-label="Звуки ударов">${C.strokes.map((st) =>
+        `<button type="button" class="tab" data-diag-stroke="${esc(st.id)}">${esc(st.label)}</button>`).join('')}</div></div>
+      <details class="diag-more"><summary>Сведения о звуке</summary>
+        <pre class="diag-info" data-d="info"></pre>
+        <div class="row"><button type="button" data-d="copy">Скопировать</button> <span class="small muted" data-d="copy-st"></span></div>
+        <p class="small muted">baseLatency и outputLatency сообщает браузер; это не измерение задержки динамика или Bluetooth.</p>
+        <div class="row">
+          <label class="inline">Упражнение <select data-d="ex">${exercises.map(({ e, l }) => `<option value="${esc(e.id)}"${e.id === 'pm1' ? ' selected' : ''}>${esc(lessonTab(l))} — ${esc(e.title)}</option>`).join('')}</select></label>
+          <label class="inline">Темп <select data-d="ex-rate"><option>40</option><option selected>60</option><option>90</option><option>120</option><option>180</option></select></label>
+          <button type="button" data-d="ex-play">С метрономом</button>
+        </div>
+        <div class="lane" data-d="lane"></div>
+      </details>
+    </article>`);
+  const $ = (k) => el.querySelector(`[data-d="${k}"]`);
+  const flash = $('flash');
+  const info = () => { $('info').textContent = diagInfoText(); };
   info();
-  const stateEl = $('#d-state');
-  const laneBox = $('#d-lane');
+  const stateEl = $('state');
+  const laneBox = $('lane');
   let flashTimer = 0;
   let probe = 0; // номер текущей пробы: события и окончание прежней не трогают экран
   const blink = () => {
@@ -760,17 +1021,14 @@ function viewSound() {
   };
   clearProbe('остановлено');
   unmountView = () => { probe += 1; clearProbe('остановлено'); };
-  const stop = () => {
+  const stopAll = () => {
     probe += 1;
     player.stop();
     clearProbe('остановлено');
     info();
   };
-  /**
-   * Запустить пробу. Звук и экран — только этой пробы: прежняя лента и вспышка
-   * убираются до запуска; showLane строит ленту для нового плана, если она применима.
-   */
   const startPlan = async (title, plan, { metronomeId = 'off', playStrokes = false, showLane = null } = {}) => {
+    narrator.stop();
     const my = ++probe;
     clearProbe(`включаю звук: ${title}…`);
     const onLane = showLane?.(plan);
@@ -784,29 +1042,29 @@ function viewSound() {
     else clearProbe(status === 'failed' ? startFailureText() : 'остановлено');
     info();
   };
-  $('#d-stop').addEventListener('click', stop);
-  $('#d-vol').addEventListener('input', (e) => {
+  $('stop').addEventListener('click', stopAll);
+  $('vol').addEventListener('input', (e) => {
     player.setVolume(Number(e.target.value) / 100);
-    $('#d-vol-n').textContent = `${e.target.value}%`;
+    $('vol-n').textContent = `${e.target.value}%`;
     info();
   });
   const restTimeline = (bpm) => buildCycleTimeline(parsePattern('-', { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols }).beats, bpm);
-  $('#d-click').addEventListener('click', () => startPlan('один щелчок', createPlan(restTimeline(60), { maxCycles: 1 }), { metronomeId: 'every1' }));
-  app.querySelectorAll('[data-diag-stroke]').forEach((b) => b.addEventListener('click', () => {
-    const r = parsePattern(b.dataset.diagStroke, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
-    startPlan(`удар ${strokeMap.get(b.dataset.diagStroke).label}`, createPlan(buildCycleTimeline(r.beats, 60), { maxCycles: 1 }), { playStrokes: true });
+  $('click').addEventListener('click', () => startPlan('один щелчок', createPlan(restTimeline(60), { maxCycles: 1 }), { metronomeId: 'every1' }));
+  el.querySelectorAll('[data-diag-stroke]').forEach((b) => b.addEventListener('click', () => {
+    const rr = parsePattern(b.dataset.diagStroke, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
+    startPlan(`удар ${strokeMap.get(b.dataset.diagStroke).label}`, createPlan(buildCycleTimeline(rr.beats, 60), { maxCycles: 1 }), { playStrokes: true });
   }));
-  $('#d-metro').addEventListener('click', () => {
-    const bpm = Number($('#d-metro-rate').value);
+  $('metro').addEventListener('click', () => {
+    const bpm = Number($('metro-rate').value);
     startPlan(`метроном ${bpm}`, createPlan(restTimeline(bpm)), { metronomeId: 'every1' });
   });
-  $('#d-ex-play').addEventListener('click', () => {
-    const { e, l } = exercises.find((x) => x.e.id === $('#d-ex').value);
-    const parsed = parsePattern(e.pattern, { strokes: C.strokes, subdivision: e.subdivision, symbols: C.config.symbols });
+  $('ex-play').addEventListener('click', () => {
+    const { e, l } = exercises.find((x) => x.e.id === $('ex').value);
+    const parsed = parse(e);
     const tech = techniqueReliability(e, l, parsed.slots, strokeMap);
     const ctx = { strokeMap, lanes: C.config.lanes, notes: e.techniqueNotes ?? [], tech: new Map(tech.items.map((i) => [techKey(i), i])) };
     const cues = parsed.slots.map((slot, i) => practiceCue({ ...slot, slotIndex: i }, ctx));
-    const rateV = Number($('#d-ex-rate').value);
+    const rateV = Number($('ex-rate').value);
     const plan = createPlan(buildCycleTimeline(parsed.beats, beatBpmFromStrokeRate(rateV, e.subdivision)), { rate: rateV });
     startPlan(`${e.title} с метрономом, ${rateV}`, plan, {
       metronomeId: 'beat', playStrokes: true,
@@ -820,19 +1078,119 @@ function viewSound() {
       },
     });
   });
-  $('#d-copy').addEventListener('click', async () => {
+  $('copy').addEventListener('click', async () => {
     const text = diagInfoText();
     try {
       await navigator.clipboard.writeText(text);
-      $('#d-copy-st').textContent = 'скопировано';
+      $('copy-st').textContent = 'скопировано';
     } catch {
       // Без безопасного соединения буфер обмена недоступен — выделяем текст для ручного копирования.
       const range = document.createRange();
-      range.selectNodeContents($('#d-info'));
+      range.selectNodeContents($('info'));
       getSelection().removeAllRanges();
       getSelection().addRange(range);
-      $('#d-copy-st').textContent = 'буфер недоступен — текст выделен, скопируйте вручную';
+      $('copy-st').textContent = 'буфер недоступен — текст выделен, скопируйте вручную';
     }
+  });
+}
+
+// ---------- для преподавателя (прежний адрес #/editor, вне главного меню) ----------
+
+function viewEditor(r) {
+  setChrome(r);
+  const cur = { config: C.config, strokes: C.strokes, modules: C.modules };
+  const el = screen('editor doc', `<h1>Для преподавателя</h1>
+    <p class="muted">Здесь меняются названия ударов, описание техники, значки, обозначения «на два / на три» и сами упражнения — без правки кода.
+    Правки проверяются и сохраняются только в этом браузере; чтобы перенести их в проект, скачайте JSON и замените файлы в папке content/.</p>
+    ${overrideNotice ? `<p class="note small">${esc(overrideNotice)}</p>` : ''}
+    <h2>Песочница записи</h2>
+    <div class="row sandbox-fields">
+      <label class="wide">Запись <input type="text" id="sb-pattern" value=">ke na | na >ko | na na | >ke na" spellcheck="false" autocapitalize="off"></label>
+      <label>Поддолей в доле <input type="number" id="sb-sub" min="1" max="12" value="2"></label>
+      <label>Группировка <input type="text" id="sb-group" size="8" value="3+3+2"></label>
+    </div>
+    <p class="small muted">Правила: слоги через пробел (id из словаря или псевдоним); «|» — граница доли; «-» — пауза; «&gt;» перед слогом — акцент;
+    «a+b» — одновременно; «re=Те» — техника «re», подпись «Те».</p>
+    <div id="sandbox" class="trainer sandbox"></div>
+    <h2>Данные</h2>
+    <div class="row" role="group" aria-label="Документ">
+      <button type="button" data-doc="strokes" aria-pressed="true">Удары</button>
+      <button type="button" data-doc="modules" aria-pressed="false">Уроки</button>
+      <button type="button" data-doc="config" aria-pressed="false">Настройки записи</button>
+    </div>
+    <textarea id="json" spellcheck="false" aria-label="JSON"></textarea>
+    <div class="row">
+      <button type="button" id="check">Проверить</button>
+      <button type="button" class="primary" id="save">Сохранить в этом браузере</button>
+      <button type="button" id="download">Скачать JSON</button>
+      <button type="button" id="restore">Вернуть исходные</button>
+    </div>
+    <div id="msg" class="small"></div>`);
+  const q = (s) => el.querySelector(s);
+
+  const sb = () => {
+    const ex = {
+      id: 'sandbox', title: 'Песочница', pattern: q('#sb-pattern').value,
+      subdivision: Number(q('#sb-sub').value), status: 'teacher', rhythmStatus: 'teacher',
+    };
+    const g = q('#sb-group').value.split('+').map(Number).filter((n) => n > 0);
+    const rr = parse(ex);
+    if (g.length && g.reduce((a, b) => a + b, 0) === rr.slots.length) ex.grouping = g;
+    endPractice();
+    mountTrainer(q('#sandbox'), ex, { sandbox: true });
+  };
+  ['#sb-pattern', '#sb-sub', '#sb-group'].forEach((s) => q(s).addEventListener('input', sb));
+  sb();
+
+  const draft = structuredClone(cur);
+  let doc = 'strokes';
+  const ta = q('#json');
+  const msg = q('#msg');
+  const show = () => { ta.value = JSON.stringify(draft[doc], null, 2); };
+  const pull = () => {
+    try { draft[doc] = JSON.parse(ta.value); return true; } catch (e) {
+      msg.innerHTML = `<p class="errors">JSON не разобран: ${esc(e.message)}</p>`; return false;
+    }
+  };
+  show();
+  el.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => {
+    if (!pull()) return;
+    doc = b.dataset.doc;
+    el.querySelectorAll('[data-doc]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    show();
+  }));
+  const check = () => {
+    if (!pull()) return null;
+    const errs = validateContent(draft);
+    msg.innerHTML = errs.length
+      ? `<p class="errors">Ошибок: ${errs.length}\n${esc(errs.join('\n'))}</p>`
+      : '<p class="ok">Ошибок нет.</p>';
+    return errs;
+  };
+  q('#check').addEventListener('click', check);
+  q('#save').addEventListener('click', () => {
+    const errs = check();
+    if (!errs || errs.length) return;
+    if (!store.set(KEYS.overrides, draft)) { msg.innerHTML = '<p class="errors">Хранилище браузера недоступно — сохранить не удалось.</p>'; return; }
+    applyOverrides();
+    msg.innerHTML = '<p class="ok">Сохранено в этом браузере. Изменения уже действуют во всех разделах.</p>';
+  });
+  q('#download').addEventListener('click', () => {
+    if (!pull()) return;
+    const name = { strokes: 'strokes.json', modules: 'lessons.json', config: 'notation-config.json' }[doc];
+    const body = doc === 'strokes' ? { version: base.strokes.version, strokes: draft.strokes }
+      : doc === 'modules' ? { version: '0.1.0', defaults: C.defaults, modules: draft.modules } : draft.config;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' }));
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+  q('#restore').addEventListener('click', () => {
+    if (!confirm('Удалить правки преподавателя в этом браузере и вернуть исходные данные?')) return;
+    store.del(KEYS.overrides);
+    applyOverrides();
+    viewEditor(r);
   });
 }
 
@@ -840,30 +1198,34 @@ function viewSound() {
 
 // Уборка видимых хвостов страницы (таймеры вспышки и т. п.) при уходе с неё.
 let unmountView = null;
+let firstRoute = true;
 
 function route() {
   endPractice();
+  narrator.stop();
+  narrationUi = null;
   unmountView?.();
   unmountView = null;
-  player.setVolume(PLAYER_VOLUME); // громкость диагностики не переносится на уроки
-  const [, page, a, b] = (location.hash || '#/').split('/').map(decodeURIComponent);
-  document.querySelectorAll('.nav a').forEach((n) => {
-    const target = n.getAttribute('href').split('/')[1];
-    if ((target || '') === (page === 'lesson' ? '' : page || '')) n.setAttribute('aria-current', 'page');
-    else n.removeAttribute('aria-current');
-  });
-  if (page === 'lesson') viewLesson(a, b);
-  else if (page === 'strokes') viewStrokes();
-  else if (page === 'progress') viewProgress();
-  else if (page === 'editor') viewEditor();
-  else if (page === 'about') viewAbout();
-  else if (page === 'sound') viewSound();
-  else viewCatalog();
+  player.setVolume(practiceVolume); // громкость диагностики не переносится на уроки
+  const r = parseRoute(location.hash);
+  if (r.page === 'lesson') viewTraining(r);
+  else if (r.page === 'practice') viewPractice(r);
+  else if (r.page === 'theory') viewTheory(r);
+  else if (r.page === 'strokes') viewStrokes(r);
+  else if (r.page === 'progress') viewProgress(r);
+  else if (r.page === 'sound') viewSound(r);
+  else if (r.page === 'about') viewAbout(r);
+  else if (r.page === 'editor') viewEditor(r);
+  else viewHome();
+  app.scrollTop = 0;
   window.scrollTo(0, 0);
+  // После перехода фокус — в начало новой страницы (для клавиатуры и диктора).
+  if (!firstRoute) app.focus({ preventScroll: true });
+  firstRoute = false;
 }
 
 // Закрытие или перезагрузка вкладки во время практики — записать полные циклы.
-window.addEventListener('pagehide', () => { endPractice(); unmountView?.(); });
+window.addEventListener('pagehide', () => { endPractice(); narrator.stop(); unmountView?.(); });
 // Вкладка скрыта (переключились на другую, погас экран): звук не останавливаем,
 // но уже сыгранные полные циклы записываем сразу — вдруг вкладку закроют фоном.
 document.addEventListener('visibilitychange', () => {
@@ -874,6 +1236,7 @@ loadContent().then(() => {
   window.addEventListener('hashchange', route);
   route();
 }).catch((e) => {
-  app.innerHTML = `<h1>Не удалось загрузить данные</h1><p class="errors">${esc(e.message)}</p>
-    <p>Проверьте подключение к интернету и обновите страницу. Если ошибка повторяется, сообщите о ней автору приложения.</p>`;
+  setChrome({ page: 'home' });
+  app.innerHTML = `<section class="screen msg"><h1>Не удалось загрузить данные</h1><p class="errors">${esc(e.message)}</p>
+    <p>Проверьте подключение к интернету и обновите страницу. Если ошибка повторяется, сообщите о ней автору приложения.</p></section>`;
 });

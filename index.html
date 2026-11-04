@@ -2,24 +2,20 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Мриданга</title>
   <meta name="description" content="Мриданга: упражнения, метроном и подсказки предстоящих ударов.">
-  <link rel="stylesheet" href="src/styles.css?v=0.2.3">
+  <meta name="theme-color" content="#faf6f0" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1815" media="(prefers-color-scheme: dark)">
+  <link rel="stylesheet" href="src/styles.css?v=0.3.0">
 </head>
 <body>
-  <header class="top">
-    <a class="brand" href="#/">Мриданга</a>
-    <nav class="nav">
-      <a href="#/">Уроки</a>
-      <a href="#/strokes">Удары</a>
-      <a href="#/progress">Прогресс</a>
-      <a href="#/sound">Звук</a>
-      <a href="#/about">О приложении</a>
-    </nav>
-  </header>
-  <main id="app" tabindex="-1"><p class="muted">Загрузка…</p></main>
+  <div class="shell">
+    <header class="bar bar-top" id="top" hidden></header>
+    <main id="app" tabindex="-1"><p class="muted loading">Загрузка…</p></main>
+    <footer class="bar bar-bottom" id="bottom" hidden></footer>
+  </div>
   <noscript>Для работы самоучителя нужен JavaScript.</noscript>
-  <script type="module" src="src/app.js?v=0.2.3"></script>
+  <script type="module" src="src/app.js?v=0.3.0"></script>
 </body>
 </html>

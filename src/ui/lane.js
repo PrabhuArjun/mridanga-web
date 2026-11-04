@@ -4,7 +4,7 @@
 // Что показывать, решает план воспроизведения (audio/transport.js): лента не
 // ведёт своего времени — ей передают позицию, вычисленную по часам звука.
 import { cueWindow, eventBySeq } from '../audio/transport.js';
-import { handSvg } from './hand.js?v=0.2.3';
+import { handSvg } from './hand.js?v=0.3.0';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
