@@ -2,7 +2,7 @@
 // С 0.3.1 главную сцену практики рисует ui/drumstage.js (барабан и руки); отсюда
 // приложение берёт только cueHint (подпись приёма), карточки остаются для проверки в
 // tests/stage.test.js. Чистые функции разметки.
-import { handSvg, drumSvg, timbreSvg, fingerWords } from './hand.js?v=0.3.1';
+import { handSvg, drumSvg, timbreSvg, fingerWords } from './hand.js?v=0.3.2';
 import { timbreInfo, laneWords } from '../model/display.js?v=0.3.0';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

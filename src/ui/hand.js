@@ -167,15 +167,15 @@ export function drumSvg({ size = 64, label = 'удар по барабану' } 
  * подсвечена, задаёт атрибут data-hit корня: left, right, both или any.
  */
 export function mridangaSvg({ label = 'мриданга' } = {}) {
-  return `<svg class="mridanga" data-hit="" viewBox="0 0 200 90" role="img" aria-label="${label}">
-    <path class="md-body" d="M26 7 Q100 -2 176 19 L176 71 Q100 92 26 83 Z"/>
-    <path class="md-lace" d="M48 6 L66 46 L48 84 M72 7 L90 46 L72 86 M96 9 L114 46 L96 87 M120 12 L138 46 L120 85 M144 15 L158 46 L144 79"/>
-    <ellipse class="md-glow md-glow-left" cx="26" cy="45" rx="15" ry="42"/>
-    <ellipse class="md-glow md-glow-right" cx="176" cy="45" rx="12" ry="30"/>
-    <ellipse class="md-head md-head-left" cx="26" cy="45" rx="11" ry="38"/>
-    <ellipse class="md-spot" cx="26" cy="45" rx="6" ry="22"/>
-    <ellipse class="md-head md-head-right" cx="176" cy="45" rx="8" ry="26"/>
-    <ellipse class="md-spot" cx="176" cy="45" rx="4" ry="14"/>
+  return `<svg class="mridanga" viewBox="0 0 240 126" role="img" aria-label="${label}">
+    <path class="md-body" d="M34 16 C53 5 73 3 94 9 C130 18 156 37 181 42 Q193 45 208 44 L208 82 Q192 81 181 84 C155 90 129 109 94 117 C73 123 53 120 34 110 Z"/>
+    <path class="md-lace" d="M42 17 Q65 62 88 117 M42 110 Q65 64 88 8 M83 8 Q108 62 132 103 M83 118 Q108 68 132 24 M128 23 Q151 65 170 87 M128 105 Q150 63 170 40 M168 40 L195 82 M168 87 L195 44"/>
+    <ellipse class="md-glow md-glow-left" cx="34" cy="63" rx="25" ry="52"/>
+    <ellipse class="md-glow md-glow-right" cx="208" cy="63" rx="13" ry="23"/>
+    <ellipse class="md-head md-head-left" cx="34" cy="63" rx="20" ry="47"/>
+    <ellipse class="md-spot" cx="34" cy="63" rx="10" ry="26"/>
+    <ellipse class="md-head md-head-right" cx="208" cy="63" rx="9" ry="19"/>
+    <ellipse class="md-spot" cx="208" cy="63" rx="4" ry="11"/>
   </svg>`;
 }
 

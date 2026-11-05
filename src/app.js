@@ -12,8 +12,8 @@ import {
 import { Player } from './audio/engine.js?v=0.3.1';
 import { createPlan, eventBySeq } from './audio/transport.js';
 import { buildSoundProfiles, FAMILY_INFO } from './audio/sound-profile.js?v=0.3.1';
-import { createLane } from './ui/lane.js?v=0.3.1';
-import { handSvg, drumSvg, timbreSvg } from './ui/hand.js?v=0.3.1';
+import { createLane } from './ui/lane.js?v=0.3.2';
+import { handSvg, drumSvg, timbreSvg } from './ui/hand.js?v=0.3.2';
 import { techKey } from './model/cue.js';
 import { practiceCue, drumCue } from './model/drum-cue.js?v=0.3.1';
 import { METRONOME_MODES } from './audio/scheduler.js';
@@ -27,13 +27,13 @@ import {
 import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.1';
 import { normalizeNarration, narrationFor } from './model/narration.js?v=0.3.0';
 import { createNarrator } from './ui/narrator.js?v=0.3.0';
-import { createDrumStage } from './ui/drumstage.js?v=0.3.1';
+import { createDrumStage } from './ui/drumstage.js?v=0.3.2';
 import { openTempoPicker, showDialog, clampTempo, tempoLabel } from './ui/tempo.js?v=0.3.0';
 import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
 
-const APP_VERSION = '0.3.1';
+const APP_VERSION = '0.3.2';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');

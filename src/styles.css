@@ -592,24 +592,14 @@ body[data-page="home"] .screen { min-height: 100%; }
   .dn { min-height: 30px; }
   .dn-syl { font-size: 1.05rem; }
 }
-/* Телефон горизонтально (844×390): слева слог и текст, в центре барабан и руки, справа подсказки. */
+/* Низкий экран: компактный транспорт в отдельной строке. */
 @media (orientation: landscape) and (max-height: 560px) {
   .trainer { grid-template-columns: minmax(0, 1fr); grid-template-rows: 44px minmax(0, 1fr) 48px; }
   .trainer .stage-wrap { grid-column: 1; grid-row: 2; }
   .trainer .tr-panel { grid-column: 1; grid-row: 3; flex-direction: row; gap: 10px; }
   .trainer .tr-info { flex: 1 1 45%; }
   .trainer .transport { flex: 1 1 55%; }
-  .dstage {
-    --drum-w: clamp(130px, 24vw, 230px);
-    grid-template-columns: minmax(110px, .8fr) minmax(0, 2.6fr) minmax(86px, .7fr); grid-template-rows: minmax(0, 1fr);
-    align-items: center; column-gap: 6px; padding: 4px 8px;
-  }
-  .ds-cue { flex-direction: column; flex-wrap: nowrap; gap: 0; }
-  .ds-cue > * { flex: 0 0 auto; }
-  .ds-syl { font-size: clamp(2.2rem, 12vmin, 3.6rem); }
-  .ds-hint { font-size: .8rem; }
-  .ds-scene { height: 100%; }
-  .ds-next { flex-direction: column; justify-content: center; }
+
 }
 
 /* Concise cards retain a scroll fallback only for enlarged accessibility text. */
@@ -683,10 +673,10 @@ body[data-page="home"] .screen { min-height: 100%; }
 }
 
 /* Equal upper and lower tracks pin the drum to the center even on rests. */
-.dstage { --cap: clamp(82px, 16dvh, 120px); grid-template-rows: var(--cap) minmax(0, 1fr) var(--cap); }
+.dstage { grid-template-rows: minmax(0, 1fr) clamp(104px, 21dvh, 188px) minmax(0, 1fr); }
 .ds-cue { align-self: start; }
 .ds-scene { grid-template-rows: minmax(0,1fr); }
-.ds-next { align-self: end; height: min(100%, 76px); }
+.ds-next { align-self: start; height: min(100%, 72px); }
 .dn { display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-rows: auto auto auto; align-content: center; justify-items: center; gap: 1px 2px; }
 .dn-head, .dn-syl, .dn-side { grid-column: 1; }
 .dn-head { grid-row: 1; } .dn-syl { grid-row: 2; } .dn-side { grid-row: 3; }
@@ -695,9 +685,6 @@ body[data-page="home"] .screen { min-height: 100%; }
 .dn-gestures .hand:not(:only-child) { width: clamp(24px, 7vw, 35px); }
 .dn:not(:has(.dn-gestures)) { grid-template-columns: minmax(0,1fr); }
 @media (orientation: landscape) and (max-height: 560px) {
-  .dstage { grid-template-rows: minmax(0,1fr); grid-template-columns: minmax(0,.85fr) minmax(0,2.6fr) minmax(0,.85fr); }
-  .ds-cue { align-self: center; }
-  .ds-next { height: min(100%, 154px); align-self: center; }
   .dn-gestures .hand { width: clamp(24px, 8.8dvh, 38px); }
   .dn-gestures .hand:not(:only-child) { width: clamp(21px, 7.6dvh, 32px); }
 }
@@ -706,4 +693,36 @@ body[data-page="home"] .screen { min-height: 100%; }
   .ds-hand-in { height: auto; }
   .ds-hand-in svg.hand { width: min(100%, 80px); flex: none; }
   .ds-next { height: 58px; }
+}
+
+/* The beat belongs to the instrument. Upcoming beats have their own smaller row below. */
+.dstage { --drum-w: clamp(132px, 43vmin, 274px); }
+.ds-drum { position: relative; }
+.ds-drum .ds-syl { position: absolute; left: 50%; top: 50%; translate: -50% -50%; max-width: 59%;
+  font-size: clamp(17px, 5.4vmin, 34px); color: #fff9ee; background: #3d2418; border: 1px solid #ffe1b8;
+  padding: .06em .21em .1em; border-radius: .25em; line-height: 1.08; white-space: nowrap; }
+.ds-drum .ds-syl:empty { display:none; }
+.ds-cue { align-content: center; align-self: end; padding-bottom: .35rem; }
+.ds-next { width: min(100%, 550px); justify-self: center; }
+.ds-timbre:empty { display:block; }
+.tr-title { white-space:normal; line-height:1.15; }
+.tr-title .tr-sub { display:none; }
+@media (min-width:900px) and (min-height:600px) {
+ .trainer { display:flex; flex-direction:column; width:min(100%, 760px); margin-inline:auto; }
+ .trainer .tr-panel { flex-direction:row; align-items:stretch; }
+ .trainer .tr-info, .trainer .transport { flex:1; }
+}
+@media (orientation:landscape) and (max-height:560px) {
+ .dstage { --drum-w:clamp(112px, 35dvh, 170px); grid-template-columns:minmax(0,1fr);
+   grid-template-rows: 22px minmax(0,1fr) 36px; row-gap:2px; padding:2px 6px; }
+ .ds-cue { flex-wrap:nowrap; align-self:center; align-items:center; gap:8px; padding:0; }
+ .ds-cue > * { flex:0 1 auto; min-height:0; }
+ .ds-head { font-size:.64rem; }
+ .ds-scene { width:min(100%, 530px); height:100%; justify-self:center; }
+ .ds-hand-in svg.hand { max-height: min(100%, 19dvh); width:auto; max-width:100%; }
+ .ds-hand-in { justify-content:center; }
+ .ds-next { height:36px; flex-direction:row; gap:6px; align-self:end; }
+ .ds-next .dn { display:flex; align-items:center; justify-content:center; gap:6px; padding:1px 4px; min-height:0; }
+ .dn-gestures .hand { height:30px; width:auto; }
+ .dn-gestures .hand:not(:only-child) { height:27px; width:auto; }
 }

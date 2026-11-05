@@ -8,10 +8,10 @@
 // руки, пауза, темп и поворот экрана не сдвигают барабан. Анимация одного касания — чистый
 // CSS у только что созданного элемента руки: таймеров нет, после «Пауза»/«Стоп» нечему
 // сработать позже. Разметка — чистые функции (tests/drum-stage.test.js).
-import { handSvg, sideHandSvg, mridangaSvg, timbreSvg, fingerWords } from './hand.js?v=0.3.1';
+import { handSvg, sideHandSvg, mridangaSvg, timbreSvg, fingerWords } from './hand.js?v=0.3.2';
 import { timbreInfo, laneWords } from '../model/display.js?v=0.3.0';
 import { hitOf, sideMark } from '../model/drum-cue.js?v=0.3.1';
-import { cueHint } from './stage.js?v=0.3.1';
+import { cueHint } from './stage.js?v=0.3.2';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -20,13 +20,12 @@ export function drumStageHtml() {
   return `<div class="dstage" data-el="dstage" data-mode="preview" data-kind="empty" role="group" aria-label="Барабан, сейчас и два следующих удара">
     <div class="ds-cue">
       <div class="ds-head" data-el="head"></div>
-      <div class="ds-syl" data-el="syl"></div>
       <div class="ds-hint" data-el="hint"></div>
       <div class="ds-timbre" data-el="timbre"></div>
     </div>
     <div class="ds-scene">
       <div class="ds-hand ds-left" data-el="left" data-side="left" data-active="0"></div>
-      <div class="ds-drum" data-el="drum" data-hit="">${mridangaSvg()}</div>
+      <div class="ds-drum" data-el="drum" data-hit="">${mridangaSvg()}<span class="ds-syl" data-el="syl"></span></div>
       <div class="ds-hand ds-right" data-el="right" data-side="right" data-active="0"></div>
     </div>
     <div class="ds-next" data-el="next" role="group" aria-label="Следующие удары"></div>
