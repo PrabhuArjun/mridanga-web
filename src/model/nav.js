@@ -24,7 +24,7 @@ export const BOTTOM_TABS = Object.freeze([
   ...SECTIONS.filter((s) => BOTTOM_PRIMARY.includes(s.id)),
 ]);
 
-const PAGES = new Set(['practice', 'theory', 'strokes', 'progress', 'sound', 'about', 'lesson', 'editor']);
+const PAGES = new Set(['practice', 'theory', 'strokes', 'progress', 'sound', 'about', 'lesson', 'editor', 'support']);
 
 /**
  * Разобрать адрес. Неизвестный раздел — главное меню.
@@ -73,6 +73,7 @@ export function breadcrumb(r, names = {}) {
     trail.push({ title: names.exerciseTitle || 'Упражнение', href: null });
     return trail;
   }
+  if (r.page === 'support') return [home, {title:'Техподдержка', href:null}];
   if (r.page === 'editor') return [home, { title: 'Для преподавателя', href: null }];
   // Раздел — один экран: выбранный урок/удар показан в пути, но «назад» из
   // раздела всегда ведёт в главное меню.

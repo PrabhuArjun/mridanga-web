@@ -24,7 +24,7 @@ import { techniqueReliability } from './model/reliability.js';
 import {
   spell, spellLesson, lessonTab, moduleTab, strokeTimbre, timbreInfo, trustedHand, laneWords, paginate,
 } from './model/display.js?v=0.3.0';
-import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.1';
+import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.5';
 import { normalizeNarration, narrationFor } from './model/narration.js?v=0.3.0';
 import { createNarrator } from './ui/narrator.js?v=0.3.0';
 import { createDrumStage } from './ui/drumstage.js?v=0.3.3';
@@ -33,7 +33,7 @@ import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
 
-const APP_VERSION = '0.3.4';
+const APP_VERSION = '0.3.5';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
@@ -306,43 +306,59 @@ function restoreFocus(el, focus) {
 
 const eightBeats = {title:'Восемь долей, две группы', url:'/eight/'};
 
-function featuredTraining() {
-  const items = [{...eightBeats, detail:'Подсказки для рук и пауза', icon:'hand'}];
-  const kaharba = findLesson('kaharba1', practiceLessons());
-  if (kaharba?.exercises.some(ex => ex.id === 'kaharba1')) {
-    items.push({title:'Кахарба', detail:'Левая рука на «Ги»', icon:'play',
-      url:href('lesson', kaharba.id, 'kaharba1')});
-  }
-  return items;
+// One bookmark across the main course and the stand-alone eight-beat exercise.
+// Only course destinations reconstructed from our catalog may become links.
+const BOOKMARK = 'mridanga.study-place.v1';
+let inMemoryPlace = null;
+function rememberPlace(url) {
+  inMemoryPlace = url;
+  store.set(BOOKMARK, url);
 }
-
-function trainingLinks(items) {
-  return `<section class="featured-training" aria-labelledby="featured-title">
-    <h2 id="featured-title">Обновлённые тренировки</h2>
-    <div class="featured-links">${items.map(item => `<a class="featured-link" href="${esc(item.url)}">
-      ${icon(item.icon, 22)}<span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
-      </a>`).join('')}</div>
-  </section>`;
+function savedPlace() {
+  const url = store.get(BOOKMARK) ?? inMemoryPlace;
+  if (url === eightBeats.url) return url;
+  if (typeof url === 'string' && url.startsWith('#/')) {
+    const {page,a,b} = parseRoute(url);
+    if (page === 'strokes' && strokeMap.has(a)) return href(page,a);
+    if (page === 'theory') {
+      const t = validTheory({lesson:a,step:Number(b)-1});
+      if (t) return href(page,t.lesson.id,t.step+1);
+    }
+    if (page === 'lesson' || page === 'practice') {
+      const p = validPractice({lesson:a,ex:b});
+      if (p) return href(page,p.lesson.id,p.ex.id);
+    }
+  }
+  // Older versions stored separate selections but no chronological order.
+  const t = validTheory(last.theory);
+  if (t) return href('theory',t.lesson.id,t.step+1);
+  const p = validPractice(last.practice);
+  if (p) return href('lesson',p.lesson.id,p.ex.id);
+  return strokeMap.has(last.stroke) ? href('strokes', last.stroke) : null;
 }
 
 function viewHome() {
   setChrome({ page: 'home' });
-  const lp = validPractice(last.practice);
-  const lt = validTheory(last.theory);
-  const featured = featuredTraining();
-  const lastUrl = lp && href('lesson', lp.lesson.id, lp.ex.id);
-  const resume = [
-    lastUrl && !featured.some(item => item.url === lastUrl) ? `<a class="btn resume" href="${esc(lastUrl)}">${icon('play', 20)}<span>Продолжить практику: <b>${esc(lessonTab(lp.lesson))}</b></span></a>` : '',
-    lt ? `<a class="btn resume" href="${href('theory', lt.lesson.id, lt.step + 1)}">${icon('book', 20)}<span>Теория: <b>${esc(lessonTab(lt.lesson))}</b>, шаг ${lt.step + 1}</span></a>` : '',
-  ].join('');
-  const el = screen('home', `
+  const resume = savedPlace();
+  return screen('home', `
     <header class="home-head"><h1>Мриданга</h1></header>
-    ${trainingLinks(featured)}
     <nav class="tiles" aria-label="Главное меню">${SECTIONS.map((s) =>
-      `<a class="tile" href="${href(s.id)}">${icon(s.icon, 40)}<span>${esc(s.title)}</span></a>`).join('')}</nav>
-    ${resume ? `<div class="resume-row">${resume}</div>` : ''}
+      `<a class="tile" href="${href(s.id)}">${icon(s.icon,40)}<span>${esc(s.title)}</span></a>`).join('')}</nav>
+    <div class="home-actions">
+      ${resume ? `<a class="btn primary" href="${esc(resume)}">Продолжить изучение</a>` : ''}
+      <a class="btn support-link" href="#/support">Написать в техподдержку</a>
+    </div>
     ${overrideNotice ? `<p class="note small">${esc(overrideNotice)}</p>` : ''}`);
-  return el;
+}
+
+function viewSupport(r) {
+  setChrome(r);
+  screen('support', `<article class="card support-card">
+    <h1>Написать в техподдержку</h1>
+    <p>Что не работает или что хотелось бы изменить?</p>
+    <p class="small muted">Обращение будет видно всем на GitHub. Для отправки нужен аккаунт. Не указывайте личные данные.</p>
+    <a class="btn primary" href="https://github.com/PrabhuArjun/mridanga-web/issues/new" target="_blank" rel="noopener noreferrer">Открыть форму на GitHub</a>
+  </article>`);
 }
 
 // ---------- выбор упражнения ----------
@@ -369,8 +385,15 @@ function viewPractice(r) {
   let sel = validPractice({ lesson: r.a, ex: exFromLast }) ?? validPractice(last.practice) ?? validPractice({ lesson: lessons[0].id });
   const modules = C.modules.filter((m) => m.lessons.some((l) => l.exercises.length));
 
+  const fromEight = firstRoute && document.referrer && new URL(document.referrer).origin === location.origin
+    && new URL(document.referrer).pathname === eightBeats.url;
+  const leftExercise = document.body.dataset.page === 'lesson' || fromEight;
+  let rendered = false;
   const render = (focus = null) => {
     const { lesson, ex } = sel;
+    // Returning through the picker should not displace the exercise itself.
+    if (rendered || !leftExercise) rememberPlace(href('practice',lesson.id,ex.id));
+    rendered = true;
     saveLast({ practice: { lesson: lesson.id, ex: ex.id } });
     history.replaceState(null, '', href('practice', lesson.id, ex.id));
     setChrome(r, { lessonTitle: lessonTab(lesson) });
@@ -430,6 +453,7 @@ function viewTraining(r) {
       <p><a class="btn" href="${href('theory', lesson.id)}">${icon('book', 22)}<span>Теория урока</span></a></p>`);
     return;
   }
+  rememberPlace(href('lesson',lesson.id,ex.id));
   if (lesson.exercises.length) saveLast({ practice: { lesson: lesson.id, ex: ex.id } });
   setChrome(r, { lessonId: lesson.id, lessonTitle: lessonTab(lesson), exerciseTitle: ex.title });
   app.innerHTML = '<section class="screen trainer" id="trainer"></section>';
@@ -817,6 +841,7 @@ function viewTheory(r) {
     const pages = theoryPages(lesson);
     sel.step = Math.min(Math.max(0, sel.step), pages.length - 1);
     const page = pages[sel.step];
+    rememberPlace(href('theory',lesson.id,sel.step+1));
     saveLast({ theory: { lesson: lesson.id, step: sel.step } });
     history.replaceState(null, '', href('theory', lesson.id, sel.step + 1));
     setChrome(r, { lessonTitle: lessonTab(lesson) });
@@ -873,6 +898,7 @@ function viewStrokes(r) {
   let i = [pick(r.a), pick(last.stroke), 0].find((x) => x >= 0);
   const render = (focus = null) => {
     const s = C.strokes[i];
+    rememberPlace(href('strokes',s.id));
     saveLast({ stroke: s.id });
     history.replaceState(null, '', href('strokes', s.id));
     setChrome(r, { lessonTitle: tabs[i].label });
@@ -1251,6 +1277,7 @@ function route() {
   else if (r.page === 'progress') viewProgress(r);
   else if (r.page === 'sound') viewSound(r);
   else if (r.page === 'about') viewAbout(r);
+  else if (r.page === 'support') viewSupport(r);
   else if (r.page === 'editor') viewEditor(r);
   else viewHome();
   app.scrollTop = 0;
@@ -1270,6 +1297,10 @@ document.addEventListener('visibilitychange', () => {
 
 loadContent().then(() => {
   window.addEventListener('hashchange', route);
+  // Refresh the menu if another document (including /eight/) changed the bookmark.
+  const refreshHome = () => { if (parseRoute(location.hash).page === 'home') viewHome(); };
+  window.addEventListener('pageshow', e => { if(e.persisted) refreshHome(); });
+  window.addEventListener('storage', e => { if(e.key === BOOKMARK || e.key === null) refreshHome(); });
   route();
 }).catch((e) => {
   setChrome({ page: 'home' });
