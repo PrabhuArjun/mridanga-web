@@ -32,8 +32,9 @@ import { openTempoPicker, showDialog, clampTempo, tempoLabel } from './ui/tempo.
 import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
+import { setupSupport } from './ui/support.js?v=0.3.6';
 
-const APP_VERSION = '0.3.5';
+const APP_VERSION = '0.3.6';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
@@ -353,12 +354,7 @@ function viewHome() {
 
 function viewSupport(r) {
   setChrome(r);
-  screen('support', `<article class="card support-card">
-    <h1>Написать в техподдержку</h1>
-    <p>Что не работает или что хотелось бы изменить?</p>
-    <p class="small muted">Обращение будет видно всем на GitHub. Для отправки нужен аккаунт. Не указывайте личные данные.</p>
-    <a class="btn primary" href="https://github.com/PrabhuArjun/mridanga-web/issues/new" target="_blank" rel="noopener noreferrer">Открыть форму на GitHub</a>
-  </article>`);
+  unmountView = setupSupport(screen('support', ''));
 }
 
 // ---------- выбор упражнения ----------
