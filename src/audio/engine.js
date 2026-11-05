@@ -1,47 +1,73 @@
 // Звук в браузере: метроном и СИНТЕЗИРОВАННЫЙ эталон ударов через Web Audio.
-// Это не запись мриданги: тембр — грубое приближение «низкая/высокая мембрана,
-// открыто/глухо» по параметрам из content/strokes.json. Настоящий эталон —
+// Это не запись мриданги: тембр — грубое приближение по звуковым профилям
+// (audio/sound-profile.js, отсчёты считает чистая audio/dsp.js). Настоящий эталон —
 // фрагмент видео преподавателя (см. страницу урока).
 import { createPlan, eventsInPlan, planEnd, retimePlan } from './transport.js';
+import { normalizeProfile } from './sound-profile.js?v=0.3.1';
+import { renderStroke, sanitizeRate, ACCENT_GAIN } from './dsp.js?v=0.3.1';
 
 export { createPlan };
 
 const LOOKAHEAD_SEC = 0.12;  // насколько вперёд планируем звук
 const TICK_MS = 25;          // как часто проверяем окно
+export const BUFFER_CACHE_MAX = 48; // готовых звуков на один AudioContext (профиль × акцент)
 
-/** Короткий удар: синус с падающей высотой + шумовая атака. */
-function playStroke(ctx, out, at, sound = {}, accent = false) {
-  const { pitch = 300, bend = 0.85, decay = 0.25, noise = 0.2, gain = 0.6 } = sound;
+// Готовые AudioBuffer удара: один раз на профиль и акцент, дальше — только запуск источника.
+// Кэш ограничен, при переполнении уходит давно не игравший звук.
+const bufferCaches = new WeakMap();
+
+export function strokeBufferCount(ctx) { return bufferCaches.get(ctx)?.size ?? 0; }
+
+function strokeBuffer(ctx, profile, accent) {
+  let cache = bufferCaches.get(ctx);
+  if (!cache) { cache = new Map(); bufferCaches.set(ctx, cache); }
+  const key = `${accent ? 'a' : 'n'}|${profile.key}`;
+  const hit = cache.get(key);
+  if (hit) { cache.delete(key); cache.set(key, hit); return hit; }
+  const sr = sanitizeRate(ctx.sampleRate);
+  const pcm = renderStroke(profile, { sampleRate: sr, accent });
+  const buf = ctx.createBuffer(1, pcm.length, sr);
+  if (typeof buf.copyToChannel === 'function') buf.copyToChannel(pcm, 0);
+  else buf.getChannelData(0).set(pcm);
+  cache.set(key, buf);
+  if (cache.size > BUFFER_CACHE_MAX) cache.delete(cache.keys().next().value);
+  return buf;
+}
+
+/** Запасной голос (прежний): синус с падающей высотой. Нужен, только если PCM собрать не удалось. */
+function playToneFallback(ctx, out, at, p, accent, level) {
   const g = ctx.createGain();
-  const peak = Math.min(1, gain * (accent ? 1.5 : 1));
+  const peak = Math.min(1, p.gain * (accent ? ACCENT_GAIN : 1)) * level;
   g.gain.setValueAtTime(0.0001, at);
   g.gain.exponentialRampToValueAtTime(peak, at + 0.004);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + p.decay);
   g.connect(out);
-
   const osc = ctx.createOscillator();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(pitch, at);
-  osc.frequency.exponentialRampToValueAtTime(Math.max(20, pitch * bend), at + decay);
+  osc.frequency.setValueAtTime(p.pitch, at);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20, p.pitch * p.bend), at + p.decay);
   osc.connect(g);
   osc.start(at);
-  osc.stop(at + decay + 0.02);
+  osc.stop(at + p.decay + 0.02);
+}
 
-  if (noise > 0) {
-    const len = Math.floor(ctx.sampleRate * 0.03);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const ng = ctx.createGain();
-    ng.gain.value = noise * peak;
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 1500;
-    src.connect(hp).connect(ng).connect(out);
-    src.start(at);
-  }
+/**
+ * Один удар учебного синтеза. `sound` — профиль из sound-profile.js (его строит
+ * приложение для практики и для «Послушать») или «сырой» sound из данных.
+ * level < 1 — доля громкости, когда в одну долю звучит несколько отдельных ударов.
+ */
+export function playStroke(ctx, out, at, sound, accent = false, level = 1) {
+  const profile = normalizeProfile(sound);
+  let buf = null;
+  try { buf = strokeBuffer(ctx, profile, accent); } catch { buf = null; }
+  if (!buf) { playToneFallback(ctx, out, at, profile, accent, level); return; }
+  const g = ctx.createGain();
+  g.gain.value = level;
+  g.connect(out);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(g);
+  src.start(at);
 }
 
 function playClick(ctx, out, at, strong) {
@@ -188,7 +214,9 @@ export class Player {
       const at = this.t0 + ev.at;
       if (ev.click) playClick(ctx, out, at, ev.clickStrong);
       if (p.playStrokes && !ev.rest) {
-        for (const id of ev.strokes) playStroke(ctx, out, at, p.strokeSounds.get(id), ev.accent);
+        // Несколько отдельных ударов в одной поддоле делят громкость, чтобы сумма не клиппировала.
+        const level = ev.strokes.length > 1 ? 1 / Math.sqrt(ev.strokes.length) : 1;
+        for (const id of ev.strokes) playStroke(ctx, out, at, p.strokeSounds.get(id), ev.accent, level);
       }
       const delayMs = Math.max(0, (at - ctx.currentTime) * 1000);
       const gen = this.gen;

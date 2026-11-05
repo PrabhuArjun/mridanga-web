@@ -9,29 +9,31 @@ import {
   normalizeProgress, recordRun, markRep, toggleLadderStep, setLessonDone, lessonSummary,
   exerciseProgress, emptyProgress,
 } from './model/progress.js';
-import { Player } from './audio/engine.js?v=0.3.0';
+import { Player } from './audio/engine.js?v=0.3.1';
 import { createPlan, eventBySeq } from './audio/transport.js';
-import { createLane } from './ui/lane.js?v=0.3.0';
-import { handSvg, drumSvg, timbreSvg } from './ui/hand.js?v=0.3.0';
-import { eventCue, techKey } from './model/cue.js';
+import { buildSoundProfiles, FAMILY_INFO } from './audio/sound-profile.js?v=0.3.1';
+import { createLane } from './ui/lane.js?v=0.3.1';
+import { handSvg, drumSvg, timbreSvg } from './ui/hand.js?v=0.3.1';
+import { techKey } from './model/cue.js';
+import { practiceCue, drumCue } from './model/drum-cue.js?v=0.3.1';
 import { METRONOME_MODES } from './audio/scheduler.js';
 import { renderStaff } from './ui/staff.js';
 import { followScrollLeft } from './ui/follow.js';
 import { createPracticeRun } from './model/practice-run.js';
 import { techniqueReliability } from './model/reliability.js';
 import {
-  spell, spellLesson, lessonTab, moduleTab, slotTimbre, strokeTimbre, timbreInfo, trustedHand, laneWords, paginate,
+  spell, spellLesson, lessonTab, moduleTab, strokeTimbre, timbreInfo, trustedHand, laneWords, paginate,
 } from './model/display.js?v=0.3.0';
-import { SECTIONS, parseRoute, href, sectionOf, breadcrumb, backHref } from './model/nav.js?v=0.3.0';
+import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.1';
 import { normalizeNarration, narrationFor } from './model/narration.js?v=0.3.0';
 import { createNarrator } from './ui/narrator.js?v=0.3.0';
-import { stageHtml } from './ui/stage.js?v=0.3.0';
+import { createDrumStage } from './ui/drumstage.js?v=0.3.1';
 import { openTempoPicker, showDialog, clampTempo, tempoLabel } from './ui/tempo.js?v=0.3.0';
 import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.3.1';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
@@ -179,7 +181,7 @@ function strokeFigure(s, { size = 96 } = {}) {
     ? s.status === 'confirmed' && !s.conflict && s.hand?.status === 'confirmed' && parts.every((p) => trustedHand(p))
     : Boolean(trustedHand(s));
   const visual = ok
-    ? parts.map((p) => handSvg(trustedHand(p), { lane: p.lane, size: combo ? Math.round(size * 0.7) : size }))
+    ? parts.map((p) => handSvg(trustedHand(p), { lane: p.lane, timbre: strokeTimbre(p, strokeMap), size: combo ? Math.round(size * 0.7) : size }))
       .join(combo ? '<span class="sc-plus" aria-label="одновременно">+</span>' : '')
     : drumSvg({ size: Math.round(size * 1.1) });
   const t = timbreInfo(strokeTimbre(s, strokeMap));
@@ -191,21 +193,13 @@ function strokeFigure(s, { size = 96 } = {}) {
 }
 
 // A student should never be taught a disputed finger assignment as established.
-// Keep the syllable/audio for practice, but omit that hand illustration.
-function practiceCue(slot, ctx) {
-  const cue = eventCue(slot, ctx);
-  if (cue.kind !== 'stroke') return cue;
-  const disputed = cue.notes.some((n) => n.status !== 'confirmed');
-  const parts = cue.parts.filter((p) => !disputed && p.hand.status === 'confirmed' && p.hand.shape !== 'unknown' &&
-    strokeMap.get(p.strokeId)?.status === 'confirmed' && !strokeMap.get(p.strokeId)?.conflict);
-  const complete = parts.length === cue.parts.length &&
-    cue.combos.every((c) => !strokeMap.get(c.strokeId)?.conflict && c.hand?.status === 'confirmed');
-  return { ...cue, parts: complete ? parts : [], combos: complete ? cue.combos : [] };
-}
+// practiceCue / drumCue (model/drum-cue.js) keep the syllable and audio but omit
+// that hand illustration.
 
+/** Звуковые профили всех ударов; один и тот же для практики, «Послушать» и проверки звука. */
 function soundMap() {
-  // У составного удара («Так», «Дхин») — собственный звук из strokes.json.
-  return new Map(C.strokes.map((s) => [s.id, s.sound]));
+  // Составной удар («Так», «Дхин») звучит слоями своих составляющих (audio/sound-profile.js).
+  return buildSoundProfiles(C.strokes);
 }
 
 function startFailureText() {
@@ -264,7 +258,10 @@ function navButtons(back) {
     <a class="btn nav-btn" href="#/">${icon('home', 22)}<span>Главное меню</span></a>`;
 }
 
-/** Верхняя и нижняя панели страницы. На главном меню панелей нет — меню и есть навигация. */
+/**
+ * Верхняя и нижняя панели страницы. На главном меню панелей нет — меню и есть навигация.
+ * «Вернуться назад»/«Главное меню» текстом — только сверху; внизу разделы и «Меню».
+ */
 function setChrome(r, names = {}) {
   document.body.dataset.page = r.page;
   if (r.page === 'home') {
@@ -283,10 +280,8 @@ function setChrome(r, names = {}) {
       const lastOne = i === trail.length - 1;
       return `<li>${t.href && !lastOne ? `<a href="${esc(t.href)}">${esc(t.title)}</a>` : `<span${lastOne ? ' aria-current="page"' : ''}>${esc(t.title)}</span>`}</li>`;
     }).join('')}</ol></nav>`;
-  const cur = sectionOf(r.page);
-  bottomBar.innerHTML = `<div class="bar-row">${navButtons(back)}</div>
-    <nav class="tabbar" aria-label="Разделы">${SECTIONS.map((s) =>
-      `<a href="${href(s.id)}"${s.id === cur ? ' aria-current="page"' : ''}>${icon(s.icon, 22)}<span>${esc(s.short)}</span></a>`).join('')}</nav>`;
+  bottomBar.innerHTML = `<nav class="tabbar" aria-label="Разделы и меню">${bottomTabs(r.page).map((t) =>
+    `<a href="${esc(t.href)}"${t.current ? ' aria-current="page"' : ''}${t.id === 'home' ? ` aria-label="${esc(t.title)}"` : ''}>${icon(t.icon, 22)}<span>${esc(t.short)}</span></a>`).join('')}</nav>`;
 }
 
 /** Экран-карточка раздела. */
@@ -443,9 +438,8 @@ function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
     strokeMap, lanes: C.config.lanes, notes: ex.techniqueNotes ?? [],
     tech: new Map(tech.items.map((i) => [techKey(i), i])),
   };
-  const cues = parsed.slots.map((slot, i) => ({
-    ...practiceCue({ ...slot, slotIndex: i }, cueCtx), timbre: slotTimbre(slot, strokeMap),
-  }));
+  // Что показывать на событии: рука/стороны барабана и подробность схемы (model/drum-cue.js).
+  const views = parsed.slots.map((slot, i) => drumCue({ ...slot, slotIndex: i }, cueCtx));
 
   // Настройки прогона (меняются в окне «Настройки», пока не играет).
   let rate = slow;
@@ -461,7 +455,7 @@ function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
       <button type="button" class="icon-btn" data-act="settings" aria-haspopup="dialog">${icon('gear', 22)}<span>Настройки</span></button>
     </div>
     <div class="stage-wrap">
-      <div class="stage" data-el="stage" role="group" aria-label="Текущий и два следующих удара"></div>
+      <div class="stage" data-el="stage"></div>
       <div class="cycle-bar" aria-hidden="true"><i data-el="cbar"></i></div>
       <p class="tr-msg" data-el="msg" aria-live="polite"></p>
     </div>
@@ -480,7 +474,8 @@ function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
 
   const $ = (k) => root.querySelector(`[data-el="${k}"]`);
   const act = (k) => root.querySelector(`[data-act="${k}"]`);
-  const stage = $('stage');
+  // Каркас сцены (барабан, слоты рук) создаётся один раз; дальше меняется только содержимое.
+  const stage = createDrumStage($('stage'));
   const cbar = $('cbar');
   const msg = $('msg');
   const play = act('play');
@@ -495,13 +490,21 @@ function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
   let cur = -1;
   let run = null;
 
-  const cueAt = (seq) => {
+  const viewAt = (seq) => {
     const ev = eventBySeq(viewPlan, seq);
-    if (ev) return cues[ev.slotIndex];
+    if (ev) return views[ev.slotIndex];
     return seq > 0 && eventBySeq(viewPlan, seq - 1) ? 'end' : null;
   };
+  // До старта и после «Стоп» — подписанный предпросмотр первого удара; во время игры — удар,
+  // на котором сыграл звук (рисуется из onStep, то есть по часам звука); на паузе сцена
+  // замирает на этом ударе, а перерисовка (например, смена темпа) идёт в режиме «paused» без пульса.
   const renderStage = () => {
-    stage.innerHTML = stageHtml(cueAt, cur);
+    const first = cur < 0;
+    const base = first ? 0 : cur;
+    stage.show(viewAt(base), {
+      mode: first ? 'preview' : player.paused ? 'paused' : 'live',
+      head: first ? 'Первый удар' : 'Сейчас', next: [viewAt(base + 1), viewAt(base + 2)],
+    });
     const ev = cur >= 0 ? eventBySeq(viewPlan, cur) : null;
     cbar.style.width = ev ? `${((ev.slotIndex + 1) / parsed.slots.length) * 100}%` : '0%';
   };
@@ -590,6 +593,7 @@ function mountTrainer(root, ex, { sandbox = false, lesson = null } = {}) {
   };
   pause.addEventListener('click', () => {
     if (!run || !player.pause()) return;
+    if (cur >= 0) stage.hold();
     commit(false);
     syncControls();
   });
@@ -930,7 +934,7 @@ function viewAbout(r) {
       <div class="th-top"><h1>О приложении</h1>${narrationHtml(track)}</div>
       <p>Ритмические мантры с подсказками и метрономом.</p>
       <ul class="about-list">
-        <li>${icon('sound', 22)}<span>Учебный синтез звука.</span></li>
+        <li>${icon('sound', 22)}<span>Тембры ударов синтезированы.</span></li>
         <li>${icon('play', 22)}<span>Ровный пульс для изучения слогов.</span></li>
         <li>${icon('chart', 22)}<span>Счётчик воспроизведения. Прогресс — самооценка.</span></li>
       </ul>
@@ -966,6 +970,11 @@ function diagInfoText() {
 function viewSound(r) {
   setChrome(r);
   player.setVolume(DIAG_VOLUME);
+  const previewProfiles = soundMap();
+  const auditoryLabel = (st) => {
+    if (!C.strokes.some(other => other.id !== st.id && other.label === st.label)) return st.label;
+    return `${st.label} · ${FAMILY_INFO[previewProfiles.get(st.id).family].label.toLowerCase()}`;
+  };
   const exercises = allLessons().flatMap((l) => l.exercises.map((e) => ({ e, l })));
   const el = screen('sound', `
     <article class="card sound-card">
@@ -984,7 +993,7 @@ function viewSound(r) {
         <span class="small diag-state" data-d="state" role="status">остановлено</span>
       </div>
       <div class="strip strip-sm over-ok"><div class="strip-scroll" role="group" aria-label="Звуки ударов">${C.strokes.map((st) =>
-        `<button type="button" class="tab" data-diag-stroke="${esc(st.id)}">${esc(st.label)}</button>`).join('')}</div></div>
+        `<button type="button" class="tab" data-diag-stroke="${esc(st.id)}">${esc(auditoryLabel(st))}</button>`).join('')}</div></div>
       <details class="diag-more"><summary>Сведения о звуке</summary>
         <pre class="diag-info" data-d="info"></pre>
         <div class="row"><button type="button" data-d="copy">Скопировать</button> <span class="small muted" data-d="copy-st"></span></div>
@@ -1051,8 +1060,10 @@ function viewSound(r) {
   const restTimeline = (bpm) => buildCycleTimeline(parsePattern('-', { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols }).beats, bpm);
   $('click').addEventListener('click', () => startPlan('один щелчок', createPlan(restTimeline(60), { maxCycles: 1 }), { metronomeId: 'every1' }));
   el.querySelectorAll('[data-diag-stroke]').forEach((b) => b.addEventListener('click', () => {
+    // Тот же профиль, что в практике (soundMap), с коротким названием типа звука в строке состояния.
+    const fam = previewProfiles.get(b.dataset.diagStroke)?.family;
     const rr = parsePattern(b.dataset.diagStroke, { strokes: C.strokes, subdivision: 1, symbols: C.config.symbols });
-    startPlan(`удар ${strokeMap.get(b.dataset.diagStroke).label}`, createPlan(buildCycleTimeline(rr.beats, 60), { maxCycles: 1 }), { playStrokes: true });
+    startPlan(`удар ${strokeMap.get(b.dataset.diagStroke).label}${fam ? ` · ${FAMILY_INFO[fam].label}` : ''}`, createPlan(buildCycleTimeline(rr.beats, 60), { maxCycles: 1 }), { playStrokes: true });
   }));
   $('metro').addEventListener('click', () => {
     const bpm = Number($('metro-rate').value);

@@ -12,6 +12,18 @@ export const SECTIONS = Object.freeze([
   { id: 'about', title: 'О приложении', short: 'О прил.', icon: 'info' },
 ]);
 
+/**
+ * Нижняя навигация: «Меню» (главное меню) и четыре основных раздела. Семь пунктов на
+ * телефоне в 320 px не помещаются без обрезанных подписей, поэтому «Звук» и «О приложении»
+ * остаются на плитках главного меню — доступ к ним не потерян.
+ */
+export const BOTTOM_PRIMARY = Object.freeze(['practice', 'theory', 'strokes', 'progress']);
+
+export const BOTTOM_TABS = Object.freeze([
+  { id: 'home', title: 'Главное меню', short: 'Меню', icon: 'home' },
+  ...SECTIONS.filter((s) => BOTTOM_PRIMARY.includes(s.id)),
+]);
+
 const PAGES = new Set(['practice', 'theory', 'strokes', 'progress', 'sound', 'about', 'lesson', 'editor']);
 
 /**
@@ -39,6 +51,12 @@ export function href(page, ...rest) {
 export function sectionOf(page) {
   if (page === 'lesson') return 'practice';
   return SECTIONS.some((s) => s.id === page) ? page : null;
+}
+
+/** Пункты нижней панели для страницы: ссылка и отметка текущего раздела. */
+export function bottomTabs(page) {
+  const cur = sectionOf(page);
+  return BOTTOM_TABS.map((t) => ({ ...t, href: href(t.id), current: t.id === cur }));
 }
 
 /**
