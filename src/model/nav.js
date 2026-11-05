@@ -73,7 +73,7 @@ export function breadcrumb(r, names = {}) {
     trail.push({ title: names.exerciseTitle || 'Упражнение', href: null });
     return trail;
   }
-  if (r.page === 'support') return [home, {title:'Техподдержка', href:null}];
+  if (r.page === 'support') return [home, {title:'О приложении', href:href('about')}, {title:'Техподдержка', href:null}];
   if (r.page === 'editor') return [home, { title: 'Для преподавателя', href: null }];
   // Раздел — один экран: выбранный урок/удар показан в пути, но «назад» из
   // раздела всегда ведёт в главное меню.

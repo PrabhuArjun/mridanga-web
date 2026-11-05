@@ -24,7 +24,7 @@ import { techniqueReliability } from './model/reliability.js';
 import {
   spell, spellLesson, lessonTab, moduleTab, strokeTimbre, timbreInfo, trustedHand, laneWords, paginate,
 } from './model/display.js?v=0.3.0';
-import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.5';
+import { SECTIONS, parseRoute, href, breadcrumb, backHref, bottomTabs } from './model/nav.js?v=0.3.7';
 import { normalizeNarration, narrationFor } from './model/narration.js?v=0.3.0';
 import { createNarrator } from './ui/narrator.js?v=0.3.0';
 import { createDrumStage } from './ui/drumstage.js?v=0.3.3';
@@ -34,7 +34,7 @@ import {
 } from './ui/widgets.js?v=0.3.0';
 import { setupSupport } from './ui/support.js?v=0.3.6';
 
-const APP_VERSION = '0.3.6';
+const APP_VERSION = '0.3.7';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
@@ -345,10 +345,7 @@ function viewHome() {
     <header class="home-head"><h1>Мриданга</h1></header>
     <nav class="tiles" aria-label="Главное меню">${SECTIONS.map((s) =>
       `<a class="tile" href="${href(s.id)}">${icon(s.icon,40)}<span>${esc(s.title)}</span></a>`).join('')}</nav>
-    <div class="home-actions">
-      ${resume ? `<a class="btn primary" href="${esc(resume)}">Продолжить изучение</a>` : ''}
-      <a class="btn support-link" href="#/support">Написать в техподдержку</a>
-    </div>
+    ${resume ? `<div class="home-actions"><a class="btn primary" href="${esc(resume)}">Продолжить изучение</a></div>` : ''}
     ${overrideNotice ? `<p class="note small">${esc(overrideNotice)}</p>` : ''}`);
 }
 
@@ -985,8 +982,8 @@ function viewAbout(r) {
         <li>${icon('play', 22)}<span>Ровный пульс для изучения слогов.</span></li>
         <li>${icon('chart', 22)}<span>Счётчик воспроизведения. Прогресс — самооценка.</span></li>
       </ul>
-      <p class="small muted">По курсу Sadhu Priya das, scsmath.</p>
-      <p class="small muted">Версия ${APP_VERSION}</p>
+      <a class="btn support-link" href="#/support">Написать в техподдержку</a>
+      <p class="small muted">По курсу Sadhu Priya das, scsmath. · Версия ${APP_VERSION}</p>
     </article>`);
   bindNarration(el, track);
 }
