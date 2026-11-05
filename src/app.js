@@ -33,7 +33,7 @@ import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
 
-const APP_VERSION = '0.3.3';
+const APP_VERSION = '0.3.4';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
@@ -304,16 +304,40 @@ function restoreFocus(el, focus) {
 
 // ---------- главное меню ----------
 
+const eightBeats = {title:'Восемь долей, две группы', url:'/eight/'};
+
+function featuredTraining() {
+  const items = [{...eightBeats, detail:'Подсказки для рук и пауза', icon:'hand'}];
+  const kaharba = findLesson('kaharba1', practiceLessons());
+  if (kaharba?.exercises.some(ex => ex.id === 'kaharba1')) {
+    items.push({title:'Кахарба', detail:'Левая рука на «Ги»', icon:'play',
+      url:href('lesson', kaharba.id, 'kaharba1')});
+  }
+  return items;
+}
+
+function trainingLinks(items) {
+  return `<section class="featured-training" aria-labelledby="featured-title">
+    <h2 id="featured-title">Обновлённые тренировки</h2>
+    <div class="featured-links">${items.map(item => `<a class="featured-link" href="${esc(item.url)}">
+      ${icon(item.icon, 22)}<span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span>
+      </a>`).join('')}</div>
+  </section>`;
+}
+
 function viewHome() {
   setChrome({ page: 'home' });
   const lp = validPractice(last.practice);
   const lt = validTheory(last.theory);
+  const featured = featuredTraining();
+  const lastUrl = lp && href('lesson', lp.lesson.id, lp.ex.id);
   const resume = [
-    lp ? `<a class="btn resume" href="${href('lesson', lp.lesson.id, lp.ex.id)}">${icon('play', 20)}<span>Продолжить практику: <b>${esc(lessonTab(lp.lesson))}</b></span></a>` : '',
+    lastUrl && !featured.some(item => item.url === lastUrl) ? `<a class="btn resume" href="${esc(lastUrl)}">${icon('play', 20)}<span>Продолжить практику: <b>${esc(lessonTab(lp.lesson))}</b></span></a>` : '',
     lt ? `<a class="btn resume" href="${href('theory', lt.lesson.id, lt.step + 1)}">${icon('book', 20)}<span>Теория: <b>${esc(lessonTab(lt.lesson))}</b>, шаг ${lt.step + 1}</span></a>` : '',
   ].join('');
   const el = screen('home', `
-    <header class="home-head"><h1>Мриданга</h1><p class="muted">Ритмические мантры шаг за шагом</p></header>
+    <header class="home-head"><h1>Мриданга</h1></header>
+    ${trainingLinks(featured)}
     <nav class="tiles" aria-label="Главное меню">${SECTIONS.map((s) =>
       `<a class="tile" href="${href(s.id)}">${icon(s.icon, 40)}<span>${esc(s.title)}</span></a>`).join('')}</nav>
     ${resume ? `<div class="resume-row">${resume}</div>` : ''}
@@ -364,6 +388,7 @@ function viewPractice(r) {
           items: lesson.exercises.map((e) => ({ id: e.id, label: e.title })) }) : `<p class="pick-ex">${esc(ex.title)}</p>`}
         ${seqChips(ex, 8)}
       </div>
+      <a class="eight-shortcut" href="${eightBeats.url}">${icon('hand', 18)}<span>${esc(eightBeats.title)}</span></a>
       <div class="pick-actions">
         <a class="btn primary big" href="${href('lesson', lesson.id, ex.id)}">${icon('play', 24)}<span>Начать</span></a>
         <a class="btn" href="${href('theory', lesson.id)}">${icon('book', 22)}<span>Теория</span></a>

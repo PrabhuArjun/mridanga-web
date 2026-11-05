@@ -726,3 +726,45 @@ body[data-page="home"] .screen { min-height: 100%; }
  .dn-gestures .hand { height:30px; width:auto; }
  .dn-gestures .hand:not(:only-child) { height:27px; width:auto; }
 }
+
+/* Direct access to the updated exercises from the same home menu. */
+.featured-training {width:min(100%,520px);}
+.featured-training h2 {font-size:.98rem;margin:0 0 6px;}
+.featured-links {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.featured-link {
+  display:flex;align-items:center;gap:9px;padding:10px 12px;min-height:54px;
+  text-decoration:none;color:var(--text);background:var(--surface-2);
+  border:1px solid var(--line);border-inline-start:3px solid var(--accent);border-radius:12px;
+}
+.featured-link .ico,.eight-shortcut .ico {color:var(--accent);flex:none;}
+.featured-link strong,.featured-link small {display:block;}
+.featured-link strong {font-size:1rem;line-height:1.2;}
+.featured-link small {font-size:.8rem;line-height:1.25;color:var(--muted);margin-top:3px;}
+.featured-link:hover,.eight-shortcut:hover {border-color:var(--accent);}
+.eight-shortcut {display:flex;align-items:center;justify-content:center;gap:8px;
+ min-height:44px;flex:none;text-decoration:none;color:var(--text);
+ border:1px solid var(--line);border-radius:12px;background:var(--surface);}
+@media (max-width:420px) {
+ .featured-link {padding:8px;gap:5px;}
+ .featured-link .ico {display:none;}
+}
+@media (orientation:portrait) and (max-height:740px) {
+ .home {gap:8px;}
+ .home .tile {min-height:clamp(54px,10dvh,74px);flex-direction:row;font-size:.95rem;}
+ .home .tile .ico {width:25px;height:25px;}
+ .home .tiles {gap:6px;}
+ .home .resume-row {gap:4px;}
+}
+@media (min-width:760px) { .featured-training {width:min(100%,760px);} }
+@media (orientation:landscape) and (min-width:560px) and (max-height:560px) {
+ .screen.home {display:grid;align-content:center;grid-template-columns:minmax(0,.9fr) minmax(0,1.45fr);gap:8px 14px;}
+ .home .home-head {grid-column:1;grid-row:1;align-self:end;}
+ .home .featured-training {grid-column:1;grid-row:2;align-self:start;}
+ .home .featured-links {grid-template-columns:1fr;}
+ .home .featured-link {padding:5px 9px;min-height:44px;}
+ .home .tiles {grid-column:2;grid-row:1 / span 2;gap:6px;}
+ .home .tile {min-height:clamp(54px,19dvh,92px);flex-direction:column;gap:3px;}
+ .home .tile .ico {width:24px;height:24px;}
+ .home .resume-row,.home>.note {grid-column:1/-1;}
+ .pick .eight-shortcut {grid-column:1;grid-row:3;align-self:center;}
+}
