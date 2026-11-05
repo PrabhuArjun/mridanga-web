@@ -4,9 +4,9 @@
 //
 // Правила доверия (внутренние статусы данных ученику не показываются):
 //  • схема кисти с пальцами — только когда подтверждены и сам удар (status = confirmed,
-//    без расхождения), и его приём (hand.status = confirmed); подтверждённого hand.status
+//    без расхождения о руке), и его приём (hand.status = confirmed); подтверждённого hand.status
 //    при неподтверждённом ударе недостаточно;
-//  • сторона (правая/левая рука) — только у подтверждённого удара без расхождения;
+//  • сторона (правая/левая рука) — только у подтверждённого удара без расхождения о руке;
 //    у неподтверждённого сторона НЕ выводится, показывается общий значок удара;
 //  • сторона известна, а пальцы нет — «только сторона», без пальцев;
 //  • число пальцев (count) — цифра на общей кисти, без выбора пальцев;
@@ -14,7 +14,9 @@
 import { eventCue } from './cue.js';
 import { slotTimbre } from './display.js?v=0.3.0';
 
-const isTrusted = (s) => Boolean(s) && s.status === 'confirmed' && !s.conflict;
+// A discrepancy about loudness does not contradict the documented hand.
+// Unscoped, unknown and technique conflicts still suppress hand cues.
+const handTrusted = (s) => s?.status === 'confirmed' && (!s.conflict || s.conflictScope === 'volume');
 const SIDES = ['left', 'right'];
 
 /**
@@ -27,9 +29,9 @@ export function practiceCue(slot, ctx) {
   if (cue.kind !== 'stroke') return cue;
   const disputed = cue.notes.some((n) => n.status !== 'confirmed');
   const parts = cue.parts.filter((p) => !disputed && p.hand.status === 'confirmed' && p.hand.shape !== 'unknown' &&
-    isTrusted(strokeMap.get(p.strokeId)));
+    handTrusted(strokeMap.get(p.strokeId)));
   const complete = parts.length === cue.parts.length &&
-    cue.combos.every((c) => isTrusted(strokeMap.get(c.strokeId)) && c.hand?.status === 'confirmed');
+    cue.combos.every((c) => handTrusted(strokeMap.get(c.strokeId)) && c.hand?.status === 'confirmed');
   return { ...cue, parts: complete ? parts : [], combos: complete ? cue.combos : [] };
 }
 
@@ -51,8 +53,8 @@ export function drumCue(slot, ctx) {
   const showDetail = raw.parts.length > 0 && detailed.parts.length === raw.parts.length;
   const sides = raw.parts.map((p) => p.lane);
   const sideKnown = raw.parts.length > 0 &&
-    raw.parts.every((p) => SIDES.includes(p.lane) && isTrusted(strokeMap.get(p.strokeId))) &&
-    raw.combos.every((c) => isTrusted(strokeMap.get(c.strokeId))) &&
+    raw.parts.every((p) => SIDES.includes(p.lane) && handTrusted(strokeMap.get(p.strokeId))) &&
+    raw.combos.every((c) => handTrusted(strokeMap.get(c.strokeId))) &&
     new Set(sides).size === sides.length; // две роли на одной руке — не рисуем
   const hands = { left: null, right: null };
   if (sideKnown) {

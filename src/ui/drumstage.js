@@ -10,7 +10,7 @@
 // сработать позже. Разметка — чистые функции (tests/drum-stage.test.js).
 import { handSvg, sideHandSvg, mridangaSvg, timbreSvg, fingerWords } from './hand.js?v=0.3.2';
 import { timbreInfo, laneWords } from '../model/display.js?v=0.3.0';
-import { hitOf, sideMark } from '../model/drum-cue.js?v=0.3.1';
+import { hitOf, sideMark } from '../model/drum-cue.js?v=0.3.3';
 import { cueHint } from './stage.js?v=0.3.2';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
