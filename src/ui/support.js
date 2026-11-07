@@ -3,7 +3,7 @@
 // Сеть — только через askQwen и только после явного нажатия; при наборе и выборе темы её нет.
 // Текст пользователя попадает в страницу через textContent; innerHTML не используется.
 // Ничего не сохраняется: черновик живёт, пока открыт экран.
-import { articles, instant, askQwen } from '../model/support.js?v=0.3.6';
+import { articles, instant, askQwen } from '../model/support.js?v=0.3.8';
 
 const MAX = 450;
 const ISSUE_URL = 'https://github.com/PrabhuArjun/mridanga-web/issues/new';

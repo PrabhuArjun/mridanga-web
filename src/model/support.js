@@ -20,7 +20,7 @@ export function instant(question) {
  return found.length===1 ? inExercise(found[0],question) : null;
 }
 // Deployment pins a single product-specific HTTPS endpoint. No model API in the client.
-const endpoint = 'https://putting-cleanup-constructed-mil.trycloudflare.com/ask';
+const endpoint = 'https://mridanga-support.sevaapps.org/ask';
 function inExercise(article, question) {
  const eight=/(?:восемь|восьм[ьи]|8)\s*(?:дол|групп)|две группы|восьм[её]рк/i.test(question);
  if (!article || !eight) return article;

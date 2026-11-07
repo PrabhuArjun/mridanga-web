@@ -32,9 +32,9 @@ import { openTempoPicker, showDialog, clampTempo, tempoLabel } from './ui/tempo.
 import {
   esc, stripHtml, bindStrip, focusTab, pagerHtml, bindPager, icon,
 } from './ui/widgets.js?v=0.3.0';
-import { setupSupport } from './ui/support.js?v=0.3.6';
+import { setupSupport } from './ui/support.js?v=0.3.8';
 
-const APP_VERSION = '0.3.7';
+const APP_VERSION = '0.3.8';
 const KEYS = { overrides: 'mridanga.overrides.v1', progress: 'mridanga.progress.v1', last: 'mridanga.last.v1' };
 const app = document.getElementById('app');
 const topBar = document.getElementById('top');
